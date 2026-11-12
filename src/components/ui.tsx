@@ -1,8 +1,9 @@
 import Image from "next/image";
+import { Store } from "lucide-react";
 import type { Device } from "@/lib/types";
 import { DeviceIllustration } from "./DeviceIllustration";
 
-/** サイトのアイコン（favicon）。src が無ければ頭文字の丸 */
+/** サイトのアイコン（favicon）。src が無ければ中立的なお店のアイコン */
 export function SiteIcon({ src, name, size = 20 }: { src?: string | null; name: string; size?: number }) {
   if (src)
     return (
@@ -10,12 +11,8 @@ export function SiteIcon({ src, name, size = 20 }: { src?: string | null; name: 
       <img src={src} alt="" width={size} height={size} className="rounded-[5px] shrink-0 bg-white object-contain" style={{ width: size, height: size }} />
     );
   return (
-    <span
-      aria-hidden="true"
-      className="shrink-0 rounded-[5px] bg-hair text-sub font-semibold inline-flex items-center justify-center"
-      style={{ width: size, height: size, fontSize: size * 0.5 }}
-    >
-      {name.replace(/[（(].*$/, "").trim().slice(0, 1)}
+    <span aria-hidden="true" title={name} className="shrink-0 rounded-[6px] bg-hair text-faint inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <Store size={Math.round(size * 0.6)} strokeWidth={1.6} />
     </span>
   );
 }

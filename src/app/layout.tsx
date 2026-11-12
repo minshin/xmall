@@ -25,14 +25,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/" className="font-semibold text-[19px] text-ink tracking-tight hover:no-underline">
               xmall
             </Link>
-            <nav aria-label="メイン" className="flex gap-6 text-[12px] text-sub overflow-x-auto">
+            <nav aria-label="メイン" className="flex gap-6 text-[12px] text-sub">
               <Link href="/" className="text-sub hover:text-ink hover:no-underline whitespace-nowrap">
                 製品
               </Link>
-              <Link href="/guide/grades" className="text-sub hover:text-ink hover:no-underline whitespace-nowrap">
+              <Link href="/guide/grades" className="hidden sm:inline text-sub hover:text-ink hover:no-underline whitespace-nowrap">
                 品質グレード
               </Link>
-              <Link href="/partners" className="text-sub hover:text-ink hover:no-underline whitespace-nowrap">
+              <Link href="/partners" className="hidden sm:inline text-sub hover:text-ink hover:no-underline whitespace-nowrap">
                 掲載について
               </Link>
             </nav>

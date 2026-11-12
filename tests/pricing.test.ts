@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { searchDevices, specValue, summarize } from "../src/lib/catalog";
+import { displaySpecs, searchDevices, specValue, summarize } from "../src/lib/catalog";
 import { SEED_CATALOG } from "../src/lib/seed";
 import { quote, rentalOffers, rentOrBuy, shopOffers } from "../src/lib/pricing";
 
@@ -61,4 +61,14 @@ test("検索：OS・月額上限で絞り込める", () => {
   assert.ok(mac.length >= 2 && mac.every((d) => specValue(getDevice(d.slug)!, "os") === "macOS"));
   const cheap = searchDevices(SEED_CATALOG, { maxMonthlyRent: 4000 });
   assert.ok(cheap.every((d) => (d.rentFrom ?? Infinity) <= 4000));
+});
+
+test("表示用スペック：他の項目に含まれる重複を消し、（詳細）を外す", () => {
+  const shown = displaySpecs(mbp.specs);
+  const keys = shown.map((s) => s.key);
+  assert.ok(!keys.includes("weight_kg"), "重さは「大きさ・重さ」に含まれる");
+  assert.ok(!keys.includes("cpu_family"), "CPU（Apple M）はチップに含まれる");
+  assert.ok(!keys.includes("os"), "OS（macOS）は OS の詳細に含まれる");
+  assert.ok(keys.includes("chip") && keys.includes("dimensions") && keys.includes("os_note"));
+  assert.ok(shown.every((s) => !s.label.includes("（詳細）")));
 });

@@ -11,6 +11,9 @@ const n = (x: number) => x.toLocaleString("ja-JP");
 
 // ───────── 閲覧者数（表示時に 1 回記録） ─────────
 
+/** 少なすぎる数は信頼を損ねるので表示しない（記録はする） */
+const MIN_VIEWS_SHOWN = 30;
+
 export function ViewCount({ slug, views }: { slug: string; views: number }) {
   const [count, setCount] = useState(views);
   useEffect(() => {
@@ -22,6 +25,7 @@ export function ViewCount({ slug, views }: { slug: string; views: number }) {
       alive = false;
     };
   }, [slug]);
+  if (count < MIN_VIEWS_SHOWN) return null;
   return (
     <span className="inline-flex items-center gap-1.5 text-mute" title="この機種を見た人">
       <Eye size={16} strokeWidth={1.8} aria-hidden="true" />
@@ -66,7 +70,7 @@ export function LikeButton({ slug, likes, liked }: { slug: string; likes: number
         className={optimistic.liked ? "animate-pop" : ""}
         aria-hidden="true"
       />
-      <span className="tabular-nums">{n(optimistic.likes)}</span>
+      {optimistic.likes > 0 && <span className="tabular-nums">{n(optimistic.likes)}</span>}
     </button>
   );
 }
@@ -76,7 +80,7 @@ export function LikeButtonPlaceholder({ likes }: { likes: number }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-mute">
       <Heart size={17} strokeWidth={1.8} aria-hidden="true" />
-      <span className="tabular-nums">{n(likes)}</span>
+      {likes > 0 && <span className="tabular-nums">{n(likes)}</span>}
     </span>
   );
 }
@@ -123,7 +127,7 @@ export function ReviewList({ reviews, helped }: { reviews: Review[]; helped: str
   const uses = [...new Set(reviews.map((r) => r.use))];
   const list = reviews.filter((r) => filter === "all" || r.use === filter);
   const pill = (on: boolean) =>
-    `rounded-full px-3.5 py-1.5 text-xs cursor-pointer transition-colors ${on ? "bg-ink text-white" : "bg-ground text-sub hover:bg-hair"}`;
+    `rounded-full px-3.5 py-1.5 text-xs cursor-pointer transition-colors ${on ? "bg-ink text-white" : "bg-white text-sub hover:bg-hair"}`;
 
   if (!reviews.length) return <p className="m-0 text-sm text-mute">まだ口コミはありません。</p>;
 
@@ -143,11 +147,11 @@ export function ReviewList({ reviews, helped }: { reviews: Review[]; helped: str
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {list.map((r, k) => (
-          <article key={r.id} className="bg-ground rounded-[14px] p-4 flex flex-col gap-2.5 animate-rise" style={{ animationDelay: `${k * 40}ms` }}>
+          <article key={r.id} className="bg-white rounded-[18px] p-5 flex flex-col gap-2.5 animate-rise" style={{ animationDelay: `${k * 40}ms` }}>
             <div className="flex items-center justify-between gap-2">
               <Stars value={r.rating} />
               <span className="flex gap-1">
-                <span className="text-[11px] bg-white text-sub px-2 py-0.5 rounded-full">{r.acquisition === "rent" ? "レンタル" : "購入"}</span>
+                <span className="text-[11px] bg-ground text-sub px-2 py-0.5 rounded-full">{r.acquisition === "rent" ? "レンタル" : "購入"}</span>
                 {r.sample && <span className="text-[11px] bg-warn-soft text-warn px-2 py-0.5 rounded-full">サンプル</span>}
               </span>
             </div>
@@ -190,7 +194,7 @@ export function ReviewForm({ slug, deviceName }: { slug: string; deviceName: str
     );
 
   return (
-    <form action={action} className="flex flex-col gap-4 bg-ground rounded-[18px] p-5 animate-rise" noValidate>
+    <form action={action} className="flex flex-col gap-4 bg-white rounded-[20px] p-6 animate-rise" noValidate>
       <p className="m-0 font-bold">{deviceName}の口コミを書く</p>
       <input type="hidden" name="deviceSlug" value={slug} />
       <div aria-hidden="true" className="hidden">

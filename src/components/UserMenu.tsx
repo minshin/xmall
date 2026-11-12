@@ -7,9 +7,9 @@ export async function UserMenu() {
   const p = await currentProfile();
   if (!p)
     return (
-      <Link href="/login" className="inline-flex items-center gap-1.5 text-[12px] text-sub hover:text-ink hover:no-underline">
+      <Link href="/login" aria-label="ログイン" className="inline-flex items-center gap-1.5 text-[12px] text-sub hover:text-ink hover:no-underline whitespace-nowrap">
         <CircleUserRound size={18} strokeWidth={1.6} aria-hidden="true" />
-        ログイン
+        <span className="hidden sm:inline">ログイン</span>
       </Link>
     );
   const initial = (p.companyName ?? p.fullName ?? p.email).trim().slice(0, 1).toUpperCase();

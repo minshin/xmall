@@ -16,6 +16,24 @@ export function variantValues(d: Pick<Device, "configs">, key: string): SpecValu
   return vals.sort((a, b) => (typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "ja")));
 }
 
+/**
+ * 表示用のスペック一覧。
+ * * 他の項目の表示文にそのまま含まれる値は重複なので出さない（例：「重さ 1.55kg」は「大きさ・重さ」に含まれる、
+ *   「CPU Apple M」は「チップ Apple M5（…）」に含まれる）。
+ * * 管理用の補足（「メモリ（詳細）」の「（詳細）」）はラベルから外す。
+ */
+export function displaySpecs(specs: DeviceSpec[]): DeviceSpec[] {
+  const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+  return specs
+    .filter((s) => {
+      if (typeof s.value === "boolean") return true;
+      const me = norm(s.display);
+      if (me.length < 2) return true;
+      return !specs.some((o) => o.key !== s.key && norm(o.display).length > me.length && norm(o.display).includes(me));
+    })
+    .map((s) => ({ ...s, label: s.label.replace(/（[^）]*）$/, "") }));
+}
+
 export interface DeviceSummary {
   slug: string;
   categoryId: string;
