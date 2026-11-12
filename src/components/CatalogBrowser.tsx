@@ -1,171 +1,205 @@
 "use client";
 
 import Link from "next/link";
+import { Eye, Heart, Star, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { DeviceSummary } from "@/lib/catalog";
 import type { DeviceStats } from "@/lib/types";
 import { yen } from "@/lib/format";
-import { DeviceIllustration } from "./DeviceIllustration";
+import { Icon } from "./icons";
+import { DeviceThumb } from "./ui";
 
-type FacetKey = "brand" | "cpu" | "mem" | "size" | "os";
-type Sort = "price" | "popular" | "suppliers";
+type Sort = "price" | "popular";
+export interface FacetDef {
+  key: string;
+  label: string;
+}
 
-const sizeBucket = (inch: number) => (inch < 13.9 ? "13インチ以下" : inch < 15 ? "14インチ" : "15インチ以上");
+const NO_STATS: DeviceStats = { likes: 0, reviewCount: 0, rating: null, views: 0 };
 
-const FACETS: { key: FacetKey; title: string; values: (d: DeviceSummary) => string[] }[] = [
-  { key: "brand", title: "ブランド", values: (d) => [d.brand] },
-  { key: "cpu", title: "CPU", values: (d) => [d.cpuFamily === "Apple M" ? "Apple Mシリーズ" : d.cpuFamily] },
-  { key: "mem", title: "メモリ", values: (d) => d.memoryOptionsGb.map((m) => `${m}GB`) },
-  { key: "size", title: "画面サイズ", values: (d) => [sizeBucket(d.screenInch)] },
-  { key: "os", title: "OS", values: (d) => [d.os] },
-];
-
-const NO_STATS: DeviceStats = { likes: 0, reviewCount: 0, rating: null };
-
-export function CatalogBrowser({ devices, stats }: { devices: DeviceSummary[]; stats: Record<string, DeviceStats> }) {
+export function CatalogBrowser({
+  devices,
+  stats,
+  facetDefs,
+  categories,
+}: {
+  devices: DeviceSummary[];
+  stats: Record<string, DeviceStats>;
+  facetDefs: FacetDef[];
+  categories: { id: string; name: string; icon: string | null }[];
+}) {
   const st = (slug: string) => stats[slug] ?? NO_STATS;
-  const [sel, setSel] = useState<Record<FacetKey, string[]>>({ brand: [], cpu: [], mem: [], size: [], os: [] });
+  const [cat, setCat] = useState(categories[0]?.id ?? "");
+  const [sel, setSel] = useState<Record<string, string[]>>({});
   const [sort, setSort] = useState<Sort>("price");
+
+  const inCat = useMemo(() => devices.filter((d) => !cat || d.categoryId === cat), [devices, cat]);
 
   const options = useMemo(
     () =>
-      FACETS.map((f) => {
-        const counts = new Map<string, number>();
-        devices.forEach((d) => new Set(f.values(d)).forEach((v) => counts.set(v, (counts.get(v) ?? 0) + 1)));
-        return { ...f, opts: [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], "ja")) };
-      }),
-    [devices],
+      [{ key: "brand", label: "ブランド" }, ...facetDefs]
+        .map((f) => {
+          const vals = new Set<string>();
+          inCat.forEach((d) => (d.facets[f.key] ?? []).forEach((v) => vals.add(v)));
+          return { ...f, opts: [...vals].sort((a, b) => a.localeCompare(b, "ja", { numeric: true })) };
+        })
+        .filter((f) => f.opts.length > 1),
+    [inCat, facetDefs],
   );
 
   const list = useMemo(() => {
-    const hit = devices.filter((d) => FACETS.every((f) => !sel[f.key].length || f.values(d).some((v) => sel[f.key].includes(v))));
+    const hit = inCat.filter((d) => Object.entries(sel).every(([k, vs]) => !vs.length || (d.facets[k] ?? []).some((v) => vs.includes(v))));
     return hit.sort((a, b) =>
-      sort === "price" ? (a.rentFrom ?? Infinity) - (b.rentFrom ?? Infinity) : sort === "popular" ? st(b.slug).likes - st(a.slug).likes : b.supplierCount - a.supplierCount,
+      sort === "price"
+        ? (a.rentFrom ?? Infinity) - (b.rentFrom ?? Infinity)
+        : st(b.slug).likes + st(b.slug).views - (st(a.slug).likes + st(a.slug).views),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [devices, sel, sort, stats]);
+  }, [inCat, sel, sort, stats]);
 
-  const toggle = (k: FacetKey, v: string) =>
-    setSel((s) => ({ ...s, [k]: s[k].includes(v) ? s[k].filter((x) => x !== v) : [...s[k], v] }));
+  const toggle = (k: string, v: string) =>
+    setSel((s) => ({ ...s, [k]: (s[k] ?? []).includes(v) ? s[k].filter((x) => x !== v) : [...(s[k] ?? []), v] }));
+  const active = Object.values(sel).some((v) => v.length);
+  const catName = categories.find((c) => c.id === cat)?.name ?? "製品";
 
   const chip = (on: boolean) =>
-    `rounded-lg border px-2.5 py-1.5 text-xs min-h-8 cursor-pointer ${on ? "border-brand bg-brand-soft" : "border-[#D6D6D0] bg-white"}`;
+    `shrink-0 rounded-full px-3.5 py-1.5 text-[13px] cursor-pointer transition-colors ${on ? "bg-ink text-white" : "bg-white text-ink hover:bg-hair"}`;
 
   return (
-    <div className="flex flex-wrap gap-6 items-start">
-      <aside aria-label="絞り込み" className="flex-[1_1_220px] max-w-[250px] flex flex-col gap-4 text-[13px]">
-        <div className="flex justify-between items-baseline">
-          <b className="text-[15px]">絞り込み</b>
-          <button type="button" className="text-brand text-xs cursor-pointer p-1.5" onClick={() => setSel({ brand: [], cpu: [], mem: [], size: [], os: [] })}>
-            クリア
-          </button>
-        </div>
-        {options.map((f) => (
-          <fieldset key={f.key} className="m-0 p-0 border-0">
-            <legend className="mb-2 font-bold text-sub text-xs">{f.title}</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {f.opts.map(([v, n]) => (
-                <button key={v} type="button" aria-pressed={sel[f.key].includes(v)} className={chip(sel[f.key].includes(v))} onClick={() => toggle(f.key, v)}>
-                  {v} <span className="text-mute">{n}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
-        ))}
-        <p className="border-t border-line pt-3 text-mute text-xs leading-relaxed">
-          月額は24か月・品質グレードA・設定テンプレート「一般事務」での最安値です。
-        </p>
-      </aside>
-
-      <section aria-label="機種一覧" className="flex-[999_1_640px] min-w-0">
-        <div className="flex flex-wrap justify-between items-baseline gap-2 mb-3.5">
-          <h1 className="m-0 text-[22px] font-bold">
-            ノートPC <span className="text-sm font-normal text-mute">{list.length}機種</span>
-          </h1>
-          <div className="flex gap-1 text-xs">
-            {(
-              [
-                ["price", "月額が安い順"],
-                ["popular", "人気順"],
-                ["suppliers", "会社が多い順"],
-              ] as [Sort, string][]
-            ).map(([k, l]) => (
-              <button
-                key={k}
-                type="button"
-                className={`rounded-md px-2.5 py-1.5 cursor-pointer ${sort === k ? "bg-brand-soft text-[#1F3F9C] font-bold" : "text-sub"}`}
-                onClick={() => setSort(k)}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {list.length === 0 && (
-          <div className="card border-dashed p-10 text-center text-sub">条件に合う機種がありません。条件を減らしてください。</div>
-        )}
-
-        <div className="flex flex-col gap-4">
-          {list.map((d) => (
-            <article key={d.slug} className="card overflow-hidden flex flex-wrap">
-              <Link href={d.url} aria-label={`${d.name}の詳細`} className="flex-[1_1_300px] min-h-[240px] bg-[#ECEEF2] flex items-center justify-center">
-                <DeviceIllustration color={d.bodyColor} id={d.slug} />
-              </Link>
-              <div className="flex-[2_1_420px] p-6 flex flex-col gap-3.5">
-                <div>
-                  <span className="text-xs text-mute">
-                    {d.brand} ・ {d.chip}
-                  </span>
-                  <h2 className="mt-1 mb-0 text-[22px] font-bold">
-                    <Link href={d.url} className="text-ink no-underline">
-                      {d.name}
-                    </Link>
-                  </h2>
-                  <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-sub">
-                    {st(d.slug).likes > 0 && <span className="text-buy">♥ 気になる {st(d.slug).likes.toLocaleString("ja-JP")}</span>}
-                    {st(d.slug).reviewCount > 0 && (
-                      <span>
-                        ★ {st(d.slug).rating}（口コミ {st(d.slug).reviewCount}件）
-                      </span>
-                    )}
-                    {!d.verified && <span className="rounded bg-[#FFF1DD] text-[#8A4B00] px-1.5">解説準備中</span>}
-                  </div>
-                </div>
-                <dl className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-x-4 gap-y-2 m-0 text-[13px]">
-                  <Spec k="CPU" v={d.chip} />
-                  <Spec k="メモリ / ストレージ" v={`${d.memoryOptionsGb.join("・")}GB / ${d.storageRange}`} />
-                  <Spec k="画面" v={`${d.screenInch}インチ`} />
-                  <Spec k="重量" v={`約${d.weightKg}kg`} />
-                  <Spec k="OS" v={d.os} />
-                </dl>
-                <div className="border-t border-[#EEEEEA] pt-3 flex flex-wrap justify-between items-baseline gap-3 text-[13px]">
-                  <span>
-                    借りる 月額 <b className="text-[22px]">{d.rentFrom ? yen(d.rentFrom) : "—"}</b>〜
-                    <span className="text-mute ml-1">（{d.supplierCount}社）</span>
-                  </span>
-                  <span className="text-buy">
-                    買う {d.buyFrom ? <b className="text-[18px]">実質 {yen(d.buyFrom)}〜</b> : "ショップ価格は準備中"}
-                  </span>
-                  <Link href={d.url} className="text-sm">
-                    比較して選ぶ →
-                  </Link>
-                </div>
-              </div>
-            </article>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="m-0 text-[32px] sm:text-[40px] font-semibold leading-tight">
+          {catName}
+          <span className="text-faint">。</span>
+          <span className="block text-[17px] sm:text-[21px] font-medium text-mute mt-1">借りるか、買うか。まとめて比べる。</span>
+        </h1>
+        <div role="tablist" aria-label="並び順" className="flex bg-hair rounded-full p-0.5 text-[13px]">
+          {(
+            [
+              ["price", "安い順"],
+              ["popular", "人気順"],
+            ] as [Sort, string][]
+          ).map(([k, l]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={sort === k}
+              className={`rounded-full px-4 py-1.5 cursor-pointer transition-all ${sort === k ? "bg-white shadow-sm font-medium" : "text-mute"}`}
+              onClick={() => setSort(k)}
+            >
+              {l}
+            </button>
           ))}
         </div>
-        <p className="mt-4 text-xs text-mute">※ レンタル会社名・月額・公式以外のショップ価格はサンプルです。商品画像は準備中のイラストです。</p>
-      </section>
-    </div>
-  );
-}
+      </div>
 
-function Spec({ k, v }: { k: string; v: string }) {
-  return (
-    <div>
-      <dt className="text-mute text-[11px]">{k}</dt>
-      <dd className="m-0 mt-0.5">{v}</dd>
+      {categories.length > 1 && (
+        <nav aria-label="品目" className="flex gap-6 overflow-x-auto snap-x-strip -mx-4 px-4 sm:mx-0 sm:px-0">
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              aria-pressed={c.id === cat}
+              onClick={() => {
+                setCat(c.id);
+                setSel({});
+              }}
+              className={`shrink-0 flex flex-col items-center gap-1.5 text-xs cursor-pointer transition-colors ${c.id === cat ? "text-ink" : "text-faint hover:text-sub"}`}
+            >
+              <Icon name={c.icon} size={30} strokeWidth={1.3} />
+              {c.name}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <div aria-label="絞り込み" className="flex gap-2 overflow-x-auto snap-x-strip -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
+        {options.flatMap((f) =>
+          f.opts.map((v) => {
+            const on = (sel[f.key] ?? []).includes(v);
+            return (
+              <button key={`${f.key}:${v}`} type="button" aria-pressed={on} title={f.label} className={chip(on)} onClick={() => toggle(f.key, v)}>
+                {v}
+              </button>
+            );
+          }),
+        )}
+        {active && (
+          <button type="button" className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-[13px] text-link cursor-pointer" onClick={() => setSel({})}>
+            <X size={14} aria-hidden="true" />
+            クリア
+          </button>
+        )}
+      </div>
+
+      {list.length === 0 && <div className="card p-12 text-center text-mute">条件に合う機種がありません</div>}
+
+      <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        {list.map((d, k) => {
+          const s = st(d.slug);
+          return (
+            <Link
+              key={d.slug}
+              href={d.url}
+              className="card lift overflow-hidden flex flex-col text-ink animate-rise"
+              style={{ animationDelay: `${k * 50}ms` }}
+            >
+              <div className="aspect-[16/10] bg-white overflow-hidden">
+                <DeviceThumb device={d} priority={k < 3} />
+              </div>
+              <div className="p-5 pt-4 flex flex-col gap-3 flex-1">
+                <div>
+                  <p className="m-0 text-xs text-mute">{d.brand}</p>
+                  <h2 className="m-0 mt-0.5 text-[21px] font-semibold leading-snug">{d.name}</h2>
+                </div>
+                <ul className="m-0 p-0 list-none flex flex-wrap gap-x-3.5 gap-y-1 text-[13px] text-sub">
+                  {d.subtitle && (
+                    <li className="inline-flex items-center gap-1">
+                      <Icon name="cpu" size={14} className="text-faint" />
+                      {d.subtitle}
+                    </li>
+                  )}
+                  {d.highlights.slice(0, 3).map((h) => (
+                    <li key={h.key} className="inline-flex items-center gap-1">
+                      <Icon name={h.icon} size={14} className="text-faint" />
+                      {h.text}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-auto flex items-end justify-between gap-2">
+                  <p className="m-0">
+                    <span className="text-xs text-mute">月額</span>{" "}
+                    <b className="text-[24px] font-semibold tabular-nums">{d.rentFrom ? yen(d.rentFrom) : "—"}</b>
+                    <span className="text-xs text-mute">〜</span>
+                  </p>
+                  <span className="flex items-center gap-2.5 text-xs text-faint tabular-nums">
+                    {s.views > 0 && (
+                      <span className="inline-flex items-center gap-1">
+                        <Eye size={13} aria-hidden="true" />
+                        {s.views}
+                      </span>
+                    )}
+                    {s.likes > 0 && (
+                      <span className="inline-flex items-center gap-1 text-heart">
+                        <Heart size={13} fill="currentColor" aria-hidden="true" />
+                        {s.likes}
+                      </span>
+                    )}
+                    {s.rating != null && (
+                      <span className="inline-flex items-center gap-1 text-[#ff9f0a]">
+                        <Star size={13} fill="currentColor" aria-hidden="true" />
+                        {s.rating}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+      <p className="m-0 text-[11px] text-faint">月額は24か月・グレードA の最安。レンタル会社名・月額はサンプルです。</p>
     </div>
   );
 }

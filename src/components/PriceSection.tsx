@@ -1,18 +1,32 @@
 "use client";
 
 import Link from "next/link";
+import {
+  ArrowUpRight, BadgeCheck, BatteryFull, Box, Briefcase, Code2, Coins, Info, Minus, Palette, Plus, RefreshCw, ShieldCheck,
+  Sparkles, Star, Truck,
+} from "lucide-react";
 import { useState } from "react";
-import { GRADE_CODES, GRADES, RESALE_RATE, TEMPLATE_CODES, TEMPLATES, TERMS } from "@/data/master";
+import { GRADE_CODES, GRADES, TEMPLATE_CODES, TEMPLATES, TERMS } from "@/data/master";
 import { yen } from "@/lib/format";
 import { findConfig, quote, rentalOffers, rentOrBuy, shopOffers } from "@/lib/pricing";
 import type { Device, GradeCode, TemplateCode, Term } from "@/lib/types";
+import { SiteIcon } from "./ui";
 
-const card = (on: boolean) =>
-  `text-left px-3.5 py-3 rounded-[10px] cursor-pointer text-sm leading-normal min-h-11 ${
-    on ? "border-2 border-brand bg-brand-soft" : "border border-[#D6D6D0] bg-white"
-  }`;
+/** 実在レンタル会社の掲載（サーバーで必要な項目だけに絞って渡す） */
+export interface ListedOffer {
+  key: string;
+  companyId: string;
+  companyName: string;
+  spec: string;
+  monthly: number;
+  note: string;
+  url: string;
+  inStock: boolean | null;
+}
 
-export function PriceSection({ device }: { device: Device }) {
+const TEMPLATE_ICON: Record<TemplateCode, typeof Briefcase> = { OFFICE: Briefcase, DESIGN: Palette, DEV: Code2, NONE: Box };
+
+export function PriceSection({ device, listed = [], favicons = {} }: { device: Device; listed?: ListedOffer[]; favicons?: Record<string, string> }) {
   const [mode, setMode] = useState<"rent" | "buy">("rent");
   const [configId, setConfigId] = useState(device.configs[0].id);
   const [grade, setGrade] = useState<GradeCode>("A");
@@ -20,6 +34,7 @@ export function PriceSection({ device }: { device: Device }) {
   const [term, setTerm] = useState<Term>(24);
   const [qty, setQty] = useState(1);
   const [pick, setPick] = useState<string | null>(null);
+  const [moreListed, setMoreListed] = useState(false);
 
   const cfg = findConfig(device, configId);
   const offers = rentalOffers(device, configId, grade, term, tpl);
@@ -27,250 +42,284 @@ export function PriceSection({ device }: { device: Device }) {
   const q = chosen ? quote(device, { configId, grade, term, template: tpl, quantity: qty, supplierId: chosen.supplierId }) : undefined;
   const shops = shopOffers(device, configId);
   const rb = rentOrBuy(device, configId, term);
-  const verdict = rb
-    ? rb.cheaper === "rent"
-      ? `${term}か月使うなら、借りる方が約${yen(rb.difference)}安くなります。`
-      : `${term}か月使うなら、買う方が約${yen(rb.difference)}安くなります（売却の手間と故障リスクはご自身で負担）。`
-    : undefined;
-
-  const tab = (on: boolean) =>
-    `px-4 py-2.5 rounded-lg text-sm cursor-pointer min-h-10 ${on ? "bg-white font-bold shadow-sm" : "text-sub"}`;
+  const brandIcon = device.brandId;
 
   return (
-    <div className="flex flex-wrap gap-6 items-start">
-      <section id="price" aria-labelledby="price-h" className="card p-6 flex flex-col gap-5 flex-[999_1_620px] min-w-0">
+    <div id="price" className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px] items-start scroll-mt-28">
+      <section aria-label="価格を比べる" className="card p-5 sm:p-7 flex flex-col gap-6 min-w-0">
         <div className="flex flex-wrap justify-between items-center gap-3">
-          <h2 id="price-h" className="m-0 text-[19px] font-bold">価格を比べる</h2>
-          <div role="tablist" aria-label="借りる・買う" className="flex bg-[#F0F0EC] rounded-[10px] p-1">
-            <button type="button" role="tab" aria-selected={mode === "rent"} className={tab(mode === "rent")} onClick={() => setMode("rent")}>
-              借りる（レンタル）
-            </button>
-            <button type="button" role="tab" aria-selected={mode === "buy"} className={tab(mode === "buy")} onClick={() => setMode("buy")}>
-              買う（購入）
-            </button>
-          </div>
-        </div>
-
-        <Group title="構成（メモリ／ストレージ）">
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2.5">
-            {device.configs.map((c) => (
-              <button key={c.id} type="button" aria-pressed={c.id === configId} className={card(c.id === configId)} onClick={() => setConfigId(c.id)}>
-                <b>{c.label}</b>
-                <br />
-                <span className="text-xs text-mute">{c.officialPrice ? `メーカー価格 ${yen(c.officialPrice)}` : (c.note ?? "　")}</span>
+          <h2 className="m-0 text-[24px] font-semibold">価格</h2>
+          <div role="tablist" aria-label="借りる・買う" className="flex bg-ground rounded-full p-1">
+            {(
+              [
+                ["rent", "借りる"],
+                ["buy", "買う"],
+              ] as const
+            ).map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={mode === k}
+                onClick={() => setMode(k)}
+                className={`px-5 py-1.5 rounded-full text-sm cursor-pointer transition-all ${mode === k ? "bg-white shadow-sm font-medium" : "text-mute"}`}
+              >
+                {l}
               </button>
             ))}
           </div>
-        </Group>
+        </div>
+
+        <Field label="構成">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
+            {device.configs.map((c) => (
+              <button key={c.id} type="button" aria-pressed={c.id === configId} className="seg px-4 py-3 text-left" onClick={() => setConfigId(c.id)}>
+                <span className="block text-[15px] font-medium">{c.label}</span>
+                {c.officialPrice && <span className="block text-xs text-mute mt-0.5">{yen(c.officialPrice)}</span>}
+              </button>
+            ))}
+          </div>
+        </Field>
 
         {mode === "rent" ? (
           <>
-            <Group title="品質グレード（xmall基準）">
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2.5">
-                {GRADE_CODES.map((g) => (
-                  <button key={g} type="button" aria-pressed={g === grade} className={card(g === grade)} onClick={() => setGrade(g)}>
-                    <b>グレード{g}</b>
-                    <br />
-                    <span className="text-xs text-mute">{GRADES[g].label}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 mb-0 text-[13px] bg-brand-soft rounded-[10px] px-3 py-2.5">
-                <b>グレード{grade}：</b>外観 {GRADES[grade].appearance} ／ バッテリー最大容量 {GRADES[grade].batteryMin} ／ 保証 {GRADES[grade].warranty}
-              </p>
-            </Group>
-
-            <Group title="設定テンプレート（届いたらすぐ使える状態にする）">
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2.5">
-                {TEMPLATE_CODES.map((t) => (
-                  <button key={t} type="button" aria-pressed={t === tpl} className={card(t === tpl)} onClick={() => setTpl(t)}>
-                    <b>{TEMPLATES[t].label}</b>
-                    <br />
-                    <span className="text-xs text-mute">
-                      {TEMPLATES[t].monthlyFee >= 0 ? "+" : "−"}
-                      {yen(Math.abs(TEMPLATES[t].monthlyFee))}/月
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {TEMPLATES[tpl].items.map((x) => (
-                  <span key={x} className="text-xs bg-white border border-[#D6D6D0] px-2.5 py-1 rounded-full">
-                    {x}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <Field label="品質グレード">
+                <div className="grid grid-cols-4 gap-1.5">
+                  {GRADE_CODES.map((g) => (
+                    <button key={g} type="button" aria-pressed={g === grade} title={GRADES[g].label} className="seg py-2 text-[15px] font-medium" onClick={() => setGrade(g)}>
+                      {g}
+                    </button>
+                  ))}
+                </div>
+                <p key={grade} className="m-0 mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-mute animate-fade">
+                  <span className="inline-flex items-center gap-1">
+                    <Sparkles size={13} aria-hidden="true" />
+                    {GRADES[grade].label}
                   </span>
-                ))}
-              </div>
-            </Group>
-
-            <div className="flex flex-wrap gap-6">
-              <Group title="契約期間">
+                  <span className="inline-flex items-center gap-1">
+                    <BatteryFull size={13} aria-hidden="true" />
+                    {GRADES[grade].batteryMin}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <ShieldCheck size={13} aria-hidden="true" />
+                    保証 {GRADES[grade].warranty}
+                  </span>
+                </p>
+              </Field>
+              <Field label="セットアップ">
+                <div className="grid grid-cols-4 gap-1.5">
+                  {TEMPLATE_CODES.map((t) => {
+                    const Icon = TEMPLATE_ICON[t];
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        aria-pressed={t === tpl}
+                        title={TEMPLATES[t].items.join("・")}
+                        className="seg py-2 flex flex-col items-center gap-1 text-[11px]"
+                        onClick={() => setTpl(t)}
+                      >
+                        <Icon size={18} strokeWidth={1.7} aria-hidden="true" />
+                        {TEMPLATES[t].label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              <Field label="期間">
                 <TermPicker term={term} setTerm={setTerm} />
-              </Group>
-              <Group title="台数">
-                <div className="flex items-center gap-2">
-                  <button type="button" aria-label="1台減らす" className="w-11 h-11 border border-[#D6D6D0] bg-white rounded-[10px] text-lg cursor-pointer" onClick={() => setQty((n) => Math.max(1, n - 1))}>
-                    −
+              </Field>
+              <Field label="台数">
+                <div className="inline-flex items-center bg-ground rounded-full p-1">
+                  <button type="button" aria-label="1台減らす" className="size-9 rounded-full bg-white flex items-center justify-center cursor-pointer active:scale-95 transition" onClick={() => setQty((n) => Math.max(1, n - 1))}>
+                    <Minus size={16} />
                   </button>
-                  <span className="min-w-10 text-center text-lg font-bold">{qty}</span>
-                  <button type="button" aria-label="1台増やす" className="w-11 h-11 border border-[#D6D6D0] bg-white rounded-[10px] text-lg cursor-pointer" onClick={() => setQty((n) => Math.min(200, n + 1))}>
-                    ＋
+                  <span key={qty} className="w-12 text-center text-[17px] font-medium tabular-nums animate-fade">
+                    {qty}
+                  </span>
+                  <button type="button" aria-label="1台増やす" className="size-9 rounded-full bg-white flex items-center justify-center cursor-pointer active:scale-95 transition" onClick={() => setQty((n) => Math.min(200, n + 1))}>
+                    <Plus size={16} />
                   </button>
                 </div>
-              </Group>
+              </Field>
             </div>
 
-            <div>
-              <p className="m-0 font-bold text-[15px]">レンタル会社の見積 {offers.length}社</p>
-              <div className="overflow-x-auto mt-2.5">
-                <table className="w-full border-collapse text-sm min-w-[680px]">
-                  <thead>
-                    <tr className="text-left text-mute text-xs">
-                      {["レンタル会社", "月額/台", "初期費用", "納期", "故障時", "評価", "選択"].map((h) => (
-                        <th key={h} className="p-2 border-b border-line font-normal">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {offers.map((o, i) => {
-                      const on = o.supplierId === chosen?.supplierId;
-                      return (
-                        <tr key={o.supplierId} className={on ? "bg-brand-soft" : ""}>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">
-                            <b>{o.supplierName}</b>
-                            <br />
-                            <span className="text-[11px] text-ok">{o.certified ? "xmall認定 " : ""}</span>
-                            <span className="text-[11px] text-[#9A4A00]">{i === 0 ? "最安" : ""}</span>
-                          </td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA] text-lg font-bold">{yen(o.monthly)}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">{o.setupFee ? yen(o.setupFee) : "無料"}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">{o.leadDays}営業日</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">{o.swap}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">★ {o.rating}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">
-                            <button
-                              type="button"
-                              className={`min-h-10 px-3.5 py-2 rounded-lg text-[13px] cursor-pointer ${on ? "bg-brand text-white" : "border border-brand text-brand bg-white"}`}
-                              onClick={() => setPick(o.supplierId)}
-                            >
-                              {on ? "選択中" : "選ぶ"}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <p className="m-0 text-[13px] font-medium text-mute">レンタル会社 {offers.length}社</p>
+                <span className="text-[11px] bg-warn-soft text-warn rounded-full px-2 py-0.5">サンプル</span>
               </div>
-              {offers.length === 0 && <p className="mt-2.5 text-[13px] text-[#9A4A00]">この組み合わせはまだ見積がありません。</p>}
-              <p className="mt-2 text-[11px] text-mute">※ レンタル会社名・月額はサンプルです。</p>
+              <ul className="m-0 p-0 list-none flex flex-col gap-2">
+                {offers.map((o, i) => {
+                  const on = o.supplierId === chosen?.supplierId;
+                  return (
+                    <li key={o.supplierId}>
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setPick(o.supplierId)}
+                        className="seg w-full px-4 py-3 flex items-center gap-3 text-left"
+                      >
+                        <SiteIcon src={favicons[o.supplierId]} name={o.supplierName} size={28} />
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center gap-1.5 text-[15px] font-medium">
+                            {o.supplierName}
+                            {o.certified && <BadgeCheck size={15} className="text-brand" aria-label="xmall認定" />}
+                            {i === 0 && <span className="text-[10px] font-semibold text-buy">最安</span>}
+                          </span>
+                          <span className="flex flex-wrap gap-x-3 text-xs text-mute mt-0.5">
+                            <span className="inline-flex items-center gap-1">
+                              <Truck size={12} aria-hidden="true" />
+                              {o.leadDays}日
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <RefreshCw size={12} aria-hidden="true" />
+                              {o.swap}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Star size={12} aria-hidden="true" />
+                              {o.rating}
+                            </span>
+                          </span>
+                        </span>
+                        <span className="text-right">
+                          <b key={o.monthly} className="block text-[19px] font-semibold tabular-nums animate-fade">
+                            {yen(o.monthly)}
+                          </b>
+                          <span className="text-[11px] text-faint">/月{o.setupFee ? `・初期${yen(o.setupFee)}` : ""}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {offers.length === 0 && <p className="m-0 text-[13px] text-warn">この条件の見積はまだありません</p>}
             </div>
+
+            {listed.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="m-0 text-[13px] font-medium text-mute inline-flex items-center gap-1.5">
+                  各社の掲載価格
+                  <span title="各社の公開ページから取得した価格です。提携先ではありません。最新の条件は各社サイトでご確認ください。" className="inline-flex text-faint cursor-help">
+                    <Info size={13} aria-label="説明" />
+                  </span>
+                </p>
+                <ul className="m-0 p-0 list-none rounded-[12px] bg-ground divide-y divide-white">
+                  {(moreListed ? listed : listed.slice(0, 4)).map((l) => (
+                    <li key={l.key} className="animate-fade">
+                      <a href={l.url} target="_blank" rel="nofollow noopener noreferrer" className="flex items-center gap-3 px-4 py-2.5 text-ink hover:no-underline hover:bg-hair/60 transition-colors rounded-[12px]">
+                        <SiteIcon src={favicons[l.companyId]} name={l.companyName} size={20} />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm truncate">{l.companyName}</span>
+                          <span className="block text-[11px] text-faint truncate">
+                            {l.spec}
+                            {l.inStock === false ? "・在庫なし" : ""}
+                          </span>
+                        </span>
+                        <span className="text-right">
+                          <b className="text-[15px] font-semibold tabular-nums">{yen(l.monthly)}</b>
+                          <span className="block text-[10px] text-faint">{l.note}</span>
+                        </span>
+                        <ArrowUpRight size={15} className="text-faint" aria-hidden="true" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+                {listed.length > 4 && (
+                  <button type="button" className="self-start text-[13px] text-link cursor-pointer" onClick={() => setMoreListed((v) => !v)}>
+                    {moreListed ? "閉じる" : `すべて表示（${listed.length}）`}
+                  </button>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <>
-            <div>
-              <div className="flex flex-wrap justify-between items-baseline gap-2">
-                <p className="m-0 font-bold text-[15px]">新品の販売価格</p>
-                <span className="text-[11px] text-mute border border-[#D6D6D0] rounded px-1.5">広告・アフィリエイトリンクを含みます</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <p className="m-0 text-[13px] font-medium text-mute">新品</p>
+                <span className="text-[11px] text-faint border border-line rounded-full px-2 py-0.5">広告</span>
               </div>
               {shops.length ? (
-                <div className="overflow-x-auto mt-2.5">
-                  <table className="w-full border-collapse text-sm min-w-[620px]">
-                    <thead>
-                      <tr className="text-left text-mute text-xs">
-                        {["ショップ", "価格（税込）", "ポイント", "実質価格", "お届け", "リンク"].map((h) => (
-                          <th key={h} className="p-2 border-b border-line font-normal">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shops.map((s, i) => (
-                        <tr key={s.shopId} className={i === 0 ? "bg-buy-soft" : ""}>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">
-                            <b>{s.shopName}</b>
-                            <br />
-                            <span className="text-[11px] text-buy">{i === 0 ? "実質最安 " : ""}</span>
-                            <span className="text-[11px] text-mute">{s.note ?? ""}</span>
-                          </td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">{yen(s.price)}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">{s.points ? `${s.points.toLocaleString("ja-JP")}pt` : "—"}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA] text-[17px] font-bold">{yen(s.effective)}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">{s.shipping}</td>
-                          <td className="px-2 py-3 border-b border-[#EEEEEA]">
-                            {/* TODO: 各ショップのアフィリエイトURLに差し替え */}
-                            <a href="#price" rel="sponsored nofollow" className="inline-block border border-buy text-buy px-3 py-2 rounded-lg no-underline text-[13px]">
-                              ショップで見る
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ul className="m-0 p-0 list-none flex flex-col gap-2">
+                  {shops.map((s, i) => (
+                    <li key={s.shopId}>
+                      {/* TODO: 各ショップのアフィリエイトURLに差し替え */}
+                      <a href="#price" rel="sponsored nofollow" className="seg px-4 py-3 flex items-center gap-3 text-ink hover:no-underline">
+                        <SiteIcon src={favicons[s.shopId === "official" ? brandIcon : s.shopId]} name={s.shopName} size={28} />
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center gap-1.5 text-[15px] font-medium">
+                            {s.shopName}
+                            {i === 0 && <span className="text-[10px] font-semibold text-buy">実質最安</span>}
+                          </span>
+                          <span className="flex flex-wrap gap-x-3 text-xs text-mute mt-0.5">
+                            {s.points > 0 && (
+                              <span className="inline-flex items-center gap-1">
+                                <Coins size={12} aria-hidden="true" />
+                                {s.points.toLocaleString("ja-JP")}pt
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1">
+                              <Truck size={12} aria-hidden="true" />
+                              {s.shipping}
+                            </span>
+                          </span>
+                        </span>
+                        <span className="text-right">
+                          <b className="block text-[19px] font-semibold tabular-nums">{yen(s.effective)}</b>
+                          {s.points > 0 && <span className="text-[11px] text-faint line-through">{yen(s.price)}</span>}
+                        </span>
+                        <ArrowUpRight size={16} className="text-faint" aria-hidden="true" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <p className="mt-2.5 text-sm text-sub">この機種のショップ価格は準備中です。</p>
+                <p className="m-0 text-sm text-mute">準備中</p>
               )}
-              <p className="mt-2 text-[11px] text-mute">メーカー価格は発表時点。他ショップの価格・ポイントはサンプルで、実運用では各ショップのAPIから毎日更新します。</p>
+              <p className="m-0 text-[11px] text-faint">メーカー価格は発表時点。他ショップはサンプル。</p>
             </div>
 
             {rb && (
-              <div className="bg-[#F7F7F4] rounded-[14px] px-4 py-4 flex flex-col gap-3">
-                <p className="m-0 font-bold text-[15px]">買うのと借りる、どちらが得？</p>
-                <div className="flex gap-2 items-center flex-wrap text-[13px]">
-                  <span>使う期間</span>
+              <div className="bg-ground rounded-[14px] p-5 flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="m-0 font-semibold">買う vs 借りる</p>
                   <TermPicker term={term} setTerm={setTerm} />
                 </div>
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2.5 text-[13px]">
-                  <div className="bg-white rounded-[10px] px-3.5 py-3 leading-loose">
-                    <b>買う場合</b>
-                    <br />
-                    購入（実質） {yen(rb.buyEffective)}
-                    <br />− {term}か月後の売却見込み {yen(rb.resale)}
-                    <br />＝ <b className="text-base">{yen(rb.buyNet)}</b>
-                  </div>
-                  <div className="bg-white rounded-[10px] px-3.5 py-3 leading-loose">
-                    <b>借りる場合（最安・グレードA）</b>
-                    <br />
-                    {yen(rb.rentMonthly)} × {term}か月
-                    <br />
-                    故障時の交換・返却時のデータ消去込み
-                    <br />＝ <b className="text-base">{yen(rb.rentTotal)}</b>
-                  </div>
-                </div>
-                <p className="m-0 text-sm bg-brand-soft rounded-[10px] px-3 py-2.5">
-                  <b>{verdict}</b>
+                <CompareBars buy={rb.buyNet} rent={rb.rentTotal} />
+                <p key={`${rb.cheaper}${term}`} className="m-0 text-sm animate-fade">
+                  {term}か月なら <b className={rb.cheaper === "rent" ? "text-brand" : "text-buy"}>{rb.cheaper === "rent" ? "借りる" : "買う"}</b> 方が{" "}
+                  <b>{yen(rb.difference)}</b> お得
                 </p>
-                <p className="m-0 text-[11px] text-mute">
-                  売却見込みは仮定の残価率（{TERMS.map((t) => `${t}か月${Math.round(RESALE_RATE[t] * 100)}%`).join("・")}）による試算です。経費処理の扱いは税理士にご確認ください。
-                </p>
+                <p className="m-0 text-[11px] text-faint">購入は売却見込み（仮定の残価率）を差し引いた額。税務は税理士へ。</p>
               </div>
             )}
           </>
         )}
       </section>
 
-      <aside aria-label="見積サマリー" className="card p-6 flex flex-col gap-3 flex-[1_1_300px] max-w-[360px]">
+      <aside aria-label="見積サマリー" className="card p-6 flex flex-col gap-4 lg:sticky lg:top-28">
         {mode === "rent" ? (
           <>
-            <p className="m-0 text-[13px] text-mute">レンタルの見積</p>
-            <p className="m-0 font-bold leading-relaxed">
-              {cfg.label}
-              <br />
-              グレード{grade} ／ {TEMPLATES[tpl].label} ／ {term}か月
-            </p>
-            <dl className="border-t border-[#EEEEEA] pt-3 m-0 flex flex-col gap-1.5 text-sm">
-              <Row k="レンタル会社" v={chosen?.supplierName ?? "—"} />
-              <Row k="月額/台" v={chosen ? yen(chosen.monthly) : "—"} />
-              <Row k="台数" v={`${qty}台`} />
-              <div className="flex justify-between text-lg mt-1.5">
-                <dt>月額合計</dt>
-                <dd className="m-0 font-bold">{q ? yen(q.monthlyTotal) : "—"}</dd>
-              </div>
-              <Row k="契約期間の総額（初期費用込み）" v={q ? yen(q.contractTotal) : "—"} muted />
-            </dl>
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {[cfg.label, `グレード${grade}`, TEMPLATES[tpl].label, `${term}か月`].map((x) => (
+                <span key={x} className="bg-ground rounded-full px-2.5 py-1 text-sub">
+                  {x}
+                </span>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 text-sm text-sub">
+              {chosen && <SiteIcon src={favicons[chosen.supplierId]} name={chosen.supplierName} size={18} />}
+              {chosen?.supplierName ?? "—"}
+            </div>
+            <div>
+              <p className="m-0 text-xs text-mute">月額合計（{qty}台）</p>
+              <p key={q?.monthlyTotal} className="m-0 text-[34px] font-semibold tabular-nums leading-tight animate-fade">
+                {q ? yen(q.monthlyTotal) : "—"}
+              </p>
+              <p className="m-0 text-xs text-faint tabular-nums">総額 {q ? yen(q.contractTotal) : "—"}</p>
+            </div>
             {chosen ? (
               <Link
                 href={`/inquiry?${new URLSearchParams({
@@ -282,42 +331,44 @@ export function PriceSection({ device }: { device: Device }) {
                   qty: String(qty),
                   supplier: chosen.supplierId,
                 })}`}
-                className="bg-brand text-white text-center no-underline py-3.5 rounded-[10px] font-bold"
+                className="btn btn-primary w-full"
               >
-                この内容で問い合わせる
+                見積を依頼
               </Link>
             ) : (
-              <span className="bg-[#C9CED9] text-white text-center py-3.5 rounded-[10px] font-bold">この条件に対応する会社がありません</span>
+              <span className="btn w-full bg-hair text-faint cursor-not-allowed">対応する会社がありません</span>
             )}
-            <p className="m-0 text-[11px] text-mute">審査・契約・配送は選んだレンタル会社が行います。</p>
           </>
         ) : shops.length ? (
           <>
-            <p className="m-0 text-[13px] text-mute">いちばん安く買えるショップ</p>
-            <p className="m-0 font-bold text-lg">{shops[0].shopName}</p>
-            <p className="m-0 text-sm">
-              {cfg.label}
-              <br />
-              実質 <b className="text-[22px]">{yen(shops[0].effective)}</b>
-            </p>
-            <a href="#price" rel="sponsored nofollow" className="bg-buy text-white text-center no-underline py-3.5 rounded-[10px] font-bold">
-              {shops[0].shopName}で見る
+            <div className="flex items-center gap-2 text-sm text-sub">
+              <SiteIcon src={favicons[shops[0].shopId === "official" ? brandIcon : shops[0].shopId]} name={shops[0].shopName} size={18} />
+              {shops[0].shopName}
+            </div>
+            <div>
+              <p className="m-0 text-xs text-mute">実質価格</p>
+              <p key={shops[0].effective} className="m-0 text-[34px] font-semibold tabular-nums leading-tight animate-fade">
+                {yen(shops[0].effective)}
+              </p>
+              <p className="m-0 text-xs text-faint">{cfg.label}</p>
+            </div>
+            <a href="#price" rel="sponsored nofollow" className="btn w-full bg-buy text-white hover:bg-[#a83f00] hover:text-white">
+              ショップで見る
+              <ArrowUpRight size={16} aria-hidden="true" />
             </a>
-            {verdict && <p className="m-0 text-xs bg-brand-soft rounded-[10px] px-3 py-2.5 leading-relaxed">{verdict}</p>}
-            <p className="m-0 text-[11px] text-mute">購入はショップのサイトで行います。xmallはショップから紹介料を受け取ることがあります。</p>
           </>
         ) : (
-          <p className="m-0 text-sm text-sub">ショップ価格は準備中です。</p>
+          <p className="m-0 text-sm text-mute">ショップ価格は準備中</p>
         )}
       </aside>
     </div>
   );
 }
 
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="m-0 mb-2 font-bold text-sm">{title}</p>
+      <p className="m-0 mb-2 text-[13px] font-medium text-mute">{label}</p>
       {children}
     </div>
   );
@@ -325,9 +376,9 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 
 function TermPicker({ term, setTerm }: { term: Term; setTerm: (t: Term) => void }) {
   return (
-    <div className="flex gap-2">
+    <div className="grid grid-cols-3 gap-1.5 w-full sm:min-w-[200px] sm:w-auto">
       {TERMS.map((t) => (
-        <button key={t} type="button" aria-pressed={t === term} className={card(t === term)} onClick={() => setTerm(t)}>
+        <button key={t} type="button" aria-pressed={t === term} className="seg py-2 text-sm" onClick={() => setTerm(t)}>
           {t}か月
         </button>
       ))}
@@ -335,11 +386,24 @@ function TermPicker({ term, setTerm }: { term: Term; setTerm: (t: Term) => void 
   );
 }
 
-function Row({ k, v, muted }: { k: string; v: string; muted?: boolean }) {
+/** 買う・借りるの総額を横棒で比べる */
+function CompareBars({ buy, rent }: { buy: number; rent: number }) {
+  const max = Math.max(buy, rent) || 1;
+  const rows = [
+    { label: "借りる", value: rent, color: "bg-brand" },
+    { label: "買う", value: buy, color: "bg-buy" },
+  ];
   return (
-    <div className={`flex justify-between gap-3 ${muted ? "text-mute" : ""}`}>
-      <dt>{k}</dt>
-      <dd className="m-0 font-bold">{v}</dd>
+    <div className="flex flex-col gap-2.5">
+      {rows.map((r) => (
+        <div key={r.label} className="grid grid-cols-[48px_1fr_auto] items-center gap-3 text-sm">
+          <span className="text-mute">{r.label}</span>
+          <span className="h-2.5 bg-white rounded-full overflow-hidden">
+            <span className={`block h-full rounded-full ${r.color} transition-[width] duration-500 ease-out`} style={{ width: `${(r.value / max) * 100}%` }} />
+          </span>
+          <b className="font-semibold tabular-nums">{yen(r.value)}</b>
+        </div>
+      ))}
     </div>
   );
 }

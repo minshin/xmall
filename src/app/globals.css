@@ -1,50 +1,195 @@
 @import "tailwindcss";
 
+/*
+ * デザイントークン：apple.com の配色・形状に合わせる（Apple 非公式の抽出値を参考にしたもの）。
+ * 既存クラス（text-ink, bg-ground, border-line, text-brand …）の名前はそのまま、値だけ Apple 準拠。
+ */
 @theme {
-  --color-ink: #16181d;
-  --color-sub: #4a4e57;
-  --color-mute: #6b6f78;
-  --color-line: #e4e4df;
-  --color-ground: #f4f4f1;
-  --color-brand: #2148b0;
-  --color-brand-soft: #eef2fc;
-  --color-buy: #9a3412;
-  --color-buy-soft: #fff6ee;
-  --color-ok: #1f6b3a;
-  --color-ok-soft: #e6f2ea;
-  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+  --color-ink: #1d1d1f; /* 本文 */
+  --color-sub: #424245; /* 準本文 */
+  --color-mute: #6e6e73; /* 補足 */
+  --color-faint: #86868b; /* さらに弱い補足 */
+  --color-line: #d2d2d7; /* 区切り線 */
+  --color-hair: #e8e8ed; /* 細い区切り */
+  --color-ground: #f5f5f7; /* 背景（ライトグレー） */
+  --color-brand: #0071e3; /* 操作の青 */
+  --color-link: #0066cc; /* 文中リンク */
+  --color-brand-soft: #e8f1fc;
+  --color-buy: #bf4800; /* 購入（Apple のオレンジ） */
+  --color-buy-soft: #fff4ea;
+  --color-ok: #248a3d; /* 緑 */
+  --color-ok-soft: #e9f6ec;
+  --color-warn: #b25000;
+  --color-warn-soft: #fff4e5;
+  --color-heart: #ff375f;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Helvetica Neue", "Noto Sans JP", system-ui, sans-serif;
+
+  --radius-card: 18px;
+  --radius-tile: 12px;
+
+  --shadow-card: 0 4px 24px rgb(0 0 0 / 0.06);
+  --shadow-lift: 0 12px 32px rgb(0 0 0 / 0.1);
+
+  --animate-pop: pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+  --animate-fade: fade 0.35s ease-out;
+  --animate-rise: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.35); }
+    100% { transform: scale(1); }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
 }
 
+@layer base {
 body {
   background: var(--color-ground);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: var(--color-brand);
+  color: var(--color-link);
+  text-decoration: none;
 }
 
 a:hover {
-  color: #16337f;
+  text-decoration: underline;
 }
 
-/* カード共通 */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+}
+
+@layer components {
+/* カード共通（白・角丸 18px・線なし） */
 .card {
   background: #fff;
+  border-radius: var(--radius-card);
+}
+
+/* ホバーで少し浮く（リンクになっているカード） */
+.lift {
+  transition:
+    transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.3s;
+}
+.lift:hover {
+  transform: translateY(-3px) scale(1.005);
+  box-shadow: var(--shadow-lift);
+  text-decoration: none;
+}
+
+/* Apple 風のボタン（ピル型） */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 980px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.2s,
+    transform 0.15s,
+    opacity 0.2s;
+  text-decoration: none;
+}
+.btn:hover {
+  text-decoration: none;
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn-primary {
+  background: var(--color-brand);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #0077ed;
+  color: #fff;
+}
+.btn-secondary {
+  background: transparent;
+  color: var(--color-link);
+  border: 1px solid var(--color-link);
+}
+
+/* セグメント（選択肢） */
+.seg {
+  border-radius: var(--radius-tile);
   border: 1px solid var(--color-line);
-  border-radius: 18px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s,
+    background-color 0.2s;
+}
+.seg:hover {
+  border-color: var(--color-faint);
+}
+.seg[aria-pressed="true"],
+.seg[aria-selected="true"] {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 1px var(--color-brand);
 }
 
 details > summary {
   list-style: none;
   cursor: pointer;
 }
-
 details > summary::-webkit-details-marker {
   display: none;
 }
+details .chev {
+  transition: transform 0.25s;
+}
+details[open] .chev {
+  transform: rotate(180deg);
+}
+details[open] > :not(summary) {
+  animation: var(--animate-fade);
+}
 
-details[open] .faq-icon {
-  transform: rotate(45deg);
+/* 横スクロール（スナップ）のギャラリー */
+.snap-x-strip {
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.snap-x-strip::-webkit-scrollbar {
+  display: none;
+}
+.snap-x-strip > * {
+  scroll-snap-align: center;
+}
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
