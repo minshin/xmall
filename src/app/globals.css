@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #16181d;
+  --color-sub: #4a4e57;
+  --color-mute: #6b6f78;
+  --color-line: #e4e4df;
+  --color-ground: #f4f4f1;
+  --color-brand: #2148b0;
+  --color-brand-soft: #eef2fc;
+  --color-buy: #9a3412;
+  --color-buy-soft: #fff6ee;
+  --color-ok: #1f6b3a;
+  --color-ok-soft: #e6f2ea;
+  --font-sans: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+a {
+  color: var(--color-brand);
+}
+
+a:hover {
+  color: #16337f;
+}
+
+/* カード共通 */
+.card {
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+}
+
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details[open] .faq-icon {
+  transform: rotate(45deg);
+}
