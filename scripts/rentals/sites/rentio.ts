@@ -1,5 +1,5 @@
 import {
-  capacitiesFromTitle, capacityGb, cpuFromText, decodeEntities, detectMaker, htmlToLines, indexOfLine, links, matchCatalog, today, valueAfter,
+  capacitiesFromTitle, capacityGb, cpuFromText, decodeEntities, detectMaker, htmlToLines, indexOfLine, links, today, valueAfter,
   type RentalListingData, type SiteScraper,
 } from "../lib";
 
@@ -107,7 +107,9 @@ export function parse(html: string, url: string): RentalListingData | null {
     inStock: text.includes("現在お届けできる在庫がありません") ? false : null,
     priceTax: "incl",
     terms,
-    ...matchCatalog(base),
+    // 機種との対応づけは取り込み時に DB の products.listing_match で行う（lib/rental-match.ts）
+    deviceSlug: null,
+    configId: null,
     prices: [
       {
         termUnit: "month",

@@ -1,14 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { Eye, Heart, Star, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { DeviceSummary } from "@/lib/catalog";
 import type { DeviceStats } from "@/lib/types";
-import { yen } from "@/lib/format";
 import { Icon } from "./icons";
-import { DeviceThumb } from "./ui";
+import { ProductCard } from "./ProductCard";
 
 type Sort = "price" | "popular";
 export interface FacetDef {
@@ -159,70 +157,11 @@ export function CatalogBrowser({ devices, stats, facetDefs, categories, query = 
       {list.length === 0 && <div className="card p-12 text-center text-mute">条件に合う機種がありません</div>}
 
       <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {list.map((d, k) => {
-          const s = st(d.slug);
-          return (
-            <Link
-              key={d.slug}
-              href={d.url}
-              className="card lift overflow-hidden flex flex-col text-ink animate-rise"
-              style={{ animationDelay: `${k * 50}ms` }}
-            >
-              <div className="aspect-[16/10] bg-white overflow-hidden">
-                <DeviceThumb device={d} priority={k < 3} />
-              </div>
-              <div className="p-5 pt-4 flex flex-col gap-3 flex-1">
-                <div>
-                  <p className="m-0 text-xs text-mute">{d.brand}</p>
-                  <h2 className="m-0 mt-0.5 text-[21px] font-semibold leading-snug">{d.name}</h2>
-                </div>
-                <ul className="m-0 p-0 list-none flex flex-wrap gap-x-3.5 gap-y-1 text-[13px] text-sub">
-                  {d.subtitle && (
-                    <li className="inline-flex items-center gap-1">
-                      <Icon name="cpu" size={14} className="text-faint" />
-                      {d.subtitle}
-                    </li>
-                  )}
-                  {d.highlights.slice(0, 3).map((h) => (
-                    <li key={h.key} className="inline-flex items-center gap-1">
-                      <Icon name={h.icon} size={14} className="text-faint" />
-                      {h.text}
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-auto flex items-end justify-between gap-2">
-                  <p className="m-0">
-                    <span className="text-xs text-mute">月額</span>{" "}
-                    <b className="text-[24px] font-semibold tabular-nums">{d.rentFrom ? yen(d.rentFrom) : "—"}</b>
-                    <span className="text-xs text-mute">〜</span>
-                  </p>
-                  <span className="flex items-center gap-2.5 text-xs text-faint tabular-nums">
-                    {s.views > 0 && (
-                      <span className="inline-flex items-center gap-1">
-                        <Eye size={13} aria-hidden="true" />
-                        {s.views}
-                      </span>
-                    )}
-                    {s.likes > 0 && (
-                      <span className="inline-flex items-center gap-1 text-heart">
-                        <Heart size={13} fill="currentColor" aria-hidden="true" />
-                        {s.likes}
-                      </span>
-                    )}
-                    {s.rating != null && (
-                      <span className="inline-flex items-center gap-1 text-[#ff9f0a]">
-                        <Star size={13} fill="currentColor" aria-hidden="true" />
-                        {s.rating}
-                      </span>
-                    )}
-                  </span>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
+        {list.map((d, k) => (
+          <ProductCard key={d.slug} d={d} stats={st(d.slug)} index={k} />
+        ))}
       </div>
-      <p className="m-0 text-[11px] text-faint">月額は24か月・グレードA の最安。レンタル会社名・月額はサンプルです。</p>
+      <p className="m-0 text-[11px] text-faint">月額は各レンタル会社の掲載価格の最安（税抜表示は税込に換算）。</p>
     </div>
   );
 }

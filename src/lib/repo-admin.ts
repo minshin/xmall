@@ -66,7 +66,7 @@ export interface ProductBase {
   verified: boolean;
   bodyColor: string;
   uses: string[];
-  supplierIds: string[];
+  listingMatch: string | null;
 }
 
 export async function createProduct(sql: Sql, p: Pick<ProductBase, "slug" | "categoryId" | "brandId" | "name">, userId: string): Promise<string> {
@@ -80,7 +80,7 @@ export async function updateProductBase(sql: Sql, id: string, p: ProductBase, us
   await sql`
     update public.products set slug = ${p.slug}, category_id = ${p.categoryId}, brand_id = ${p.brandId}, name = ${p.name},
       subtitle = ${p.subtitle}, release_date = ${p.releaseDate}, status = ${p.status}, verified = ${p.verified},
-      body_color = ${p.bodyColor}, uses = ${p.uses}, supplier_ids = ${p.supplierIds}, updated_at = now(), updated_by = ${userId}
+      body_color = ${p.bodyColor}, uses = ${p.uses}, listing_match = ${p.listingMatch}, updated_at = now(), updated_by = ${userId}
     where id = ${id}`;
 }
 
@@ -132,7 +132,6 @@ export interface VariantInput {
   label: string;
   attrs: Record<string, SpecValue>;
   officialPrice: number | null;
-  rentBase: number;
   note: string | null;
 }
 
@@ -142,8 +141,8 @@ export async function saveVariants(sql: Sql, productId: string, variants: Varian
     await tx`delete from public.product_variants where product_id = ${productId}`;
     for (const [i, v] of variants.entries()) {
       await tx`
-        insert into public.product_variants (product_id, code, label, attrs, official_price, rent_base, note, sort)
-        values (${productId}, ${v.code}, ${v.label}, ${tx.json(v.attrs as never)}, ${v.officialPrice}, ${v.rentBase}, ${v.note}, ${i})`;
+        insert into public.product_variants (product_id, code, label, attrs, official_price, note, sort)
+        values (${productId}, ${v.code}, ${v.label}, ${tx.json(v.attrs as never)}, ${v.officialPrice}, ${v.note}, ${i})`;
     }
     await tx`update public.products set updated_at = now(), updated_by = ${userId} where id = ${productId}`;
   });
@@ -291,4 +290,53 @@ export async function catalogCounts(sql: Sql) {
       (select count(*)::int from public.media) as media,
       (select count(*)::int from public.categories) as categories`;
   return r;
+}
+
+// ───────── レンタル会社の掲載商品（対応づけの確認・手での修正） ─────────
+
+export interface AdminListing {
+  id: string;
+  companyId: string;
+  companyName: string;
+  url: string;
+  title: string;
+  memoryGb: number | null;
+  storageGb: number | null;
+  minMonthly: number | null;
+  priceTax: string;
+  deviceSlug: string | null;
+  configId: string | null;
+  matchManual: boolean;
+  fetchedAt: string;
+}
+
+export type ListingFilter = "unmatched" | "matched" | "manual" | "all";
+
+export async function listRentalListings(sql: Sql, filter: ListingFilter, q = "", limit = 300): Promise<AdminListing[]> {
+  const rows = await sql<(Omit<AdminListing, "fetchedAt"> & { fetchedAt: string })[]>`
+    select l.id, l.company_id as "companyId", c.name as "companyName", l.url, l.title, l.memory_gb as "memoryGb", l.storage_gb as "storageGb",
+      (select min(p.price_yen) from public.rental_prices p where p.listing_id = l.id and p.basis = 'per_month')::int as "minMonthly",
+      l.price_tax as "priceTax", l.device_slug as "deviceSlug", l.config_id as "configId", l.match_manual as "matchManual",
+      l.fetched_at::text as "fetchedAt"
+    from public.rental_listings l join public.rental_companies c on c.id = l.company_id
+    where l.active
+      ${filter === "unmatched" ? sql`and l.device_slug is null` : filter === "matched" ? sql`and l.device_slug is not null` : filter === "manual" ? sql`and l.match_manual` : sql``}
+      ${q ? sql`and (l.title ilike ${"%" + q + "%"} or coalesce(l.device_slug, '') ilike ${"%" + q + "%"})` : sql``}
+    order by l.device_slug nulls first, l.company_id, l.title
+    limit ${limit}`;
+  return [...rows];
+}
+
+export async function listingCounts(sql: Sql) {
+  const [r] = await sql<{ all: number; matched: number; manual: number }[]>`
+    select count(*)::int as all, count(device_slug)::int as matched, count(*) filter (where match_manual)::int as manual
+    from public.rental_listings where active`;
+  return { ...r, unmatched: r.all - r.matched };
+}
+
+/** 手で対応づける（deviceSlug を null にすると「対応なし」で固定）。manual=false で自動に戻す */
+export async function setListingMatch(sql: Sql, id: string, m: { deviceSlug: string | null; configId: string | null; manual: boolean }): Promise<void> {
+  await sql`
+    update public.rental_listings set device_slug = ${m.deviceSlug}, config_id = ${m.configId}, match_manual = ${m.manual}, updated_at = now()
+    where id = ${id}`;
 }

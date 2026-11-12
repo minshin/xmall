@@ -1,4 +1,5 @@
-import { lowestMonthly, lowestPurchase } from "./pricing";
+import { companyCount, lowestMonthly, lowestPurchase } from "./pricing";
+import { productPath } from "./urls";
 import type { Device, DeviceImage, DeviceSpec, SpecValue, Use } from "./types";
 
 /**
@@ -46,9 +47,12 @@ export interface DeviceSummary {
   /** 絞り込み用の値（key → 値の一覧。variant は全構成の値） */
   facets: Record<string, string[]>;
   uses: Use[];
+  /** レンタルの最安月額（掲載価格。比較用の税込換算） */
   rentFrom?: number;
+  /** メーカー直販価格の最安 */
   buyFrom?: number;
-  supplierCount: number;
+  /** 掲載しているレンタル会社の数 */
+  companyCount: number;
   verified: boolean;
   bodyColor: string;
   images?: DeviceImage[];
@@ -85,11 +89,11 @@ export function summarize(d: Device, highlightAttrs?: { key: string; label: stri
     uses: d.uses,
     rentFrom: lowestMonthly(d),
     buyFrom: lowestPurchase(d),
-    supplierCount: d.suppliers.length,
+    companyCount: companyCount(d),
     verified: d.verified,
     bodyColor: d.bodyColor,
     images: d.images.slice(0, 1),
-    url: `/pc/${d.slug}`,
+    url: productPath(d),
   };
 }
 

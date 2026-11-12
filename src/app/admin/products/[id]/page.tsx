@@ -5,13 +5,13 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowDown, ArrowLeft, ArrowUp, ExternalLink, Trash2, Unlink } from "lucide-react";
 import { Icon } from "@/components/icons";
-import { SUPPLIERS } from "@/data/master";
 import { requireRole } from "@/lib/auth";
 import { getSql } from "@/lib/db";
 import { USE_LABEL } from "@/lib/labels";
 import { hasRole } from "@/lib/repo-accounts";
 import * as cat from "@/lib/repo-catalog";
 import * as admin from "@/lib/repo-admin";
+import { productPath } from "@/lib/urls";
 import { UUID } from "@/lib/validation-admin";
 import {
   deleteProductAction, productImageAction, saveContentAction, saveProductBaseAction, saveSpecsAction, saveVariantsAction, uploadProductImagesAction,
@@ -89,7 +89,7 @@ async function Body({ params }: { params: PageProps<"/admin/products/[id]">["par
           <h1 className="m-0 text-[28px] font-semibold">{p.name}</h1>
           <span className={`text-xs rounded-full px-2.5 py-0.5 ${STATUS_TONE[p.status]}`}>{STATUS_LABEL[p.status]}</span>
           {p.status === "published" && (
-            <a href={`/pc/${p.slug}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-sm ml-auto">
+            <a href={productPath(p)} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-sm ml-auto">
               サイトで見る <ExternalLink size={14} aria-hidden="true" />
             </a>
           )}
@@ -167,17 +167,18 @@ async function Body({ params }: { params: PageProps<"/admin/products/[id]">["par
               ))}
             </div>
           </fieldset>
-          <fieldset className="border-0 p-0 m-0 flex flex-col gap-2">
-            <legend className="text-[13px] text-mute mb-1.5">見積を出すレンタル会社（サンプル）</legend>
-            <div className="flex flex-wrap gap-2">
-              {SUPPLIERS.map((s) => (
-                <label key={s.id} className="inline-flex items-center gap-1.5 text-sm bg-ground rounded-full px-3 py-1.5 cursor-pointer has-[:checked]:bg-brand-soft has-[:checked]:text-brand">
-                  <input type="checkbox" name="suppliers" value={s.id} defaultChecked={p.suppliers.includes(s.id)} className="sr-only" />
-                  {s.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <Label text={`レンタル会社の掲載との対応づけ（正規表現。いま ${p.rentals.length} 件が対応）`}>
+            <input
+              name="listingMatch"
+              defaultValue={p.listingMatch ?? ""}
+              placeholder="例：ThinkPad ?E15 ?Gen ?2\b"
+              className={`${input} font-mono`}
+            />
+            <span className="text-xs text-mute">
+              掲載のメーカー・型番・タイトルに当てます（大文字小文字は区別しない）。世代まで書いてください。
+              <Link href="/admin/rentals">掲載商品の一覧</Link>
+            </span>
+          </Label>
         </ActionForm>
       </Section>
 
@@ -290,7 +291,7 @@ async function Body({ params }: { params: PageProps<"/admin/products/[id]">["par
           <input type="hidden" name="id" value={p.id} />
           <VariantsEditor
             attrs={variantAttrs.map(({ key, label, unit, type, options }) => ({ key, label, unit, type, options }))}
-            initial={p.configs.map((v) => ({ code: v.id, label: v.label, attrs: v.attrs, officialPrice: v.officialPrice ?? null, rentBase: v.rentBase, note: v.note ?? null }))}
+            initial={p.configs.map((v) => ({ code: v.id, label: v.label, attrs: v.attrs, officialPrice: v.officialPrice ?? null, note: v.note ?? null }))}
           />
         </ActionForm>
       </Section>

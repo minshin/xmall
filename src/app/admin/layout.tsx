@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Boxes, Globe, Images, Inbox, LayoutDashboard, ListTree, MessageSquareText, Users } from "lucide-react";
+import { Boxes, Globe, Images, Inbox, LayoutDashboard, Link2, ListTree, MessageSquareText, Users } from "lucide-react";
 
 export const metadata: Metadata = {
   title: { default: "管理画面", template: "%s｜管理画面" },
@@ -10,12 +10,13 @@ export const metadata: Metadata = {
 const NAV = [
   { href: "/admin", label: "概要", icon: LayoutDashboard },
   { href: "/admin/products", label: "製品", icon: Boxes },
+  { href: "/admin/rentals", label: "レンタル掲載", icon: Link2 },
   { href: "/admin/categories", label: "品目・スペック", icon: ListTree },
   { href: "/admin/sites", label: "サイト・favicon", icon: Globe },
   { href: "/admin/media", label: "画像", icon: Images },
   { href: "/admin/users", label: "会員", icon: Users },
   { href: "/admin/reviews", label: "口コミ", icon: MessageSquareText },
-  { href: "/admin/inquiries", label: "問い合わせ", icon: Inbox },
+  { href: "/admin/inquiries", label: "相談", icon: Inbox },
 ];
 
 /** 権限の確認は各ページ（requireRole）と各 Server Action で行う。ここは枠だけ */

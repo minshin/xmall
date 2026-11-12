@@ -1,26 +1,7 @@
 // xmall の領域モデル。docs/data-model.md と同期すること。
 
-export type GradeCode = "S" | "A" | "B" | "C";
-export type TemplateCode = "OFFICE" | "DESIGN" | "DEV" | "NONE";
-export type Term = 12 | 24 | 36;
 export type Os = "macOS" | "Windows";
 export type Use = "office" | "design" | "dev" | "sales" | "cad";
-
-export interface Grade {
-  code: GradeCode;
-  label: string;
-  appearance: string;
-  batteryMin: string;
-  warranty: string;
-  priceFactor: number;
-}
-
-export interface Template {
-  code: TemplateCode;
-  label: string;
-  monthlyFee: number;
-  items: string[];
-}
 
 // ───────── 商品（DB: products ほか。docs/data-model.md） ─────────
 
@@ -73,8 +54,6 @@ export interface DeviceConfig {
   attrs: Record<string, SpecValue>;
   /** メーカー直販価格（税込）。未確認なら undefined */
   officialPrice?: number;
-  /** 24か月・グレードA・係数1.0の基準月額 */
-  rentBase: number;
   note?: string;
 }
 
@@ -133,8 +112,10 @@ export interface Device {
   status: ProductStatus;
   uses: Use[];
   configs: DeviceConfig[];
-  /** 見積を出すレンタル会社 id（src/data/master.ts の SUPPLIERS） */
-  suppliers: string[];
+  /** レンタル会社の掲載（実データ。rental_listings のうちこの機種に対応づいたもの） */
+  rentals: RentalOffer[];
+  /** 掲載商品との対応づけに使う正規表現（管理用） */
+  listingMatch: string | null;
   /** 事実確認済みか。false の機種はページに「確認中」を表示する */
   verified: boolean;
   specs: DeviceSpec[];
@@ -142,6 +123,8 @@ export interface Device {
   sources: Source[];
   bodyColor: string;
   images: DeviceImage[];
+  /** 最終更新（機種の編集日と掲載価格の取得日の新しい方。ISO 日付） */
+  updatedAt: string;
 }
 
 // ───────── 初期データ（src/data/devices.ts）の形。ノートPC 専用の旧モデル ─────────
@@ -164,37 +147,13 @@ export interface SeedDevice {
   weightKg: number;
   releaseDate?: string;
   uses: Use[];
-  configs: { id: string; label: string; memoryGb: number; storageGb: number; officialPrice?: number; rentBase: number; note?: string }[];
-  suppliers: string[];
+  configs: { id: string; label: string; memoryGb: number; storageGb: number; officialPrice?: number; note?: string }[];
+  /** 掲載商品との対応づけ（products.listing_match） */
+  listingMatch?: string;
   verified: boolean;
   content?: DeviceContent & { specs: SpecRow[] };
   sources: Source[];
   bodyColor: string;
-}
-
-export interface Supplier {
-  id: string;
-  name: string;
-  certified: boolean;
-  rating: number;
-  leadDays: number;
-  swap: string;
-  setupFee: number;
-  priceFactor: number;
-  grades: GradeCode[];
-  sample: boolean;
-}
-
-export interface Shop {
-  id: string;
-  name: string;
-  kind: "official" | "affiliate";
-  /** 公式価格に対する販売価格の比率（サンプル） */
-  priceRatio: number;
-  pointRate: number;
-  shipping: string;
-  note?: string;
-  sample: boolean;
 }
 
 export type ReviewStatus = "pending" | "approved" | "rejected";
@@ -211,7 +170,6 @@ export interface Review {
   body: string;
   helpful: number;
   createdAt: string;
-  sample: boolean;
 }
 
 /** 機種ごとの集計（DB: public.device_stats） */
@@ -223,26 +181,35 @@ export interface DeviceStats {
   views: number;
 }
 
+/** 機種ページ・比較で使うレンタルの掲載 1 件（rental_listings ＋ rental_prices から作る） */
 export interface RentalOffer {
-  supplierId: string;
-  supplierName: string;
+  /** companyId:externalId */
+  key: string;
+  companyId: string;
+  companyName: string;
+  url: string;
+  title: string;
+  /** 対応する構成（読み取れなければ null＝構成の記載なし） */
+  configId: string | null;
+  cpu: string | null;
+  memoryGb: number | null;
+  storageGb: number | null;
+  condition: RentalListingData["condition"];
+  officeIncluded: boolean | null;
+  inStock: boolean | null;
+  priceTax: RentalListingData["priceTax"];
+  /** 月額の最安（ページの表記どおりの金額） */
   monthly: number;
-  setupFee: number;
-  leadDays: number;
-  swap: string;
-  rating: number;
-  certified: boolean;
-}
-
-export interface ShopOffer {
-  shopId: string;
-  shopName: string;
-  kind: Shop["kind"];
-  price: number;
-  points: number;
-  effective: number;
-  shipping: string;
-  note?: string;
+  /** その月額になる契約期間（か月） */
+  monthlyTerm: number;
+  /** 比較用：税抜表示を税込に換算した月額（税区分の記載が無いものは表示額のまま） */
+  monthlyCompare: number;
+  /** 契約期間ごとの月額（ページの表記どおり） */
+  plans: { months: number; monthly: number; label: string }[];
+  /** 最短の利用期間（日・か月の表記。例：3日〜、1か月〜） */
+  minTerm: string | null;
+  terms: string | null;
+  fetchedAt: string;
 }
 
 // ───────── 実在レンタル会社の掲載価格（DB: rental_companies / rental_listings / rental_prices） ─────────

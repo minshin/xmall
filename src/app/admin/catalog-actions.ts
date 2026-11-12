@@ -8,6 +8,7 @@ import { requireSql } from "@/lib/db";
 import * as cat from "@/lib/repo-catalog";
 import * as admin from "@/lib/repo-admin";
 import * as accounts from "@/lib/repo-accounts";
+import { rematchListings } from "@/lib/rental-match";
 import { deleteMedia, mimeOf, uploadMedia } from "@/lib/storage";
 import type { SpecValue } from "@/lib/types";
 import {
@@ -66,11 +67,14 @@ export async function saveProductBaseAction(_prev: AdminState, fd: FormData): Pr
     verified: fd.get("verified") === "on",
     bodyColor: str(fd, "bodyColor"),
     uses: fd.getAll("uses").map(String),
-    supplierIds: fd.getAll("suppliers").map(String),
+    listingMatch: str(fd, "listingMatch"),
   });
   if (!p.success) return { ok: false, error: firstIssue(p.error) };
   try {
-    await admin.updateProductBase(requireSql(), id, p.data, me.id);
+    const sql = requireSql();
+    await admin.updateProductBase(sql, id, p.data, me.id);
+    // slug・対応づけの正規表現が変わったかもしれないので、掲載商品を付け直す
+    await rematchListings(sql);
   } catch (e) {
     return { ok: false, error: dbError(e) };
   }
@@ -120,7 +124,9 @@ export async function saveVariantsAction(_prev: AdminState, fd: FormData): Promi
   const v = variantsSchema.safeParse(str(fd, "variants"));
   if (!v.success) return { ok: false, error: firstIssue(v.error) };
   try {
-    await admin.saveVariants(requireSql(), id, v.data, me.id);
+    const sql = requireSql();
+    await admin.saveVariants(sql, id, v.data, me.id);
+    await rematchListings(sql);
   } catch (e) {
     return { ok: false, error: dbError(e) };
   }
@@ -307,4 +313,42 @@ export async function setRoleAction(fd: FormData): Promise<void> {
   if (id === me.id) return; // 自分の権限は変えられない（最後の管理者がいなくなるのを防ぐ）
   await accounts.setRole(requireSql(), id, role as accounts.Role);
   revalidatePath(`/admin/users/${id}`);
+}
+
+// ───────── レンタル会社の掲載商品 ─────────
+
+export async function rematchListingsAction(): Promise<AdminState> {
+  await requireRole("editor");
+  try {
+    const r = await rematchListings(requireSql());
+    refreshCatalog("/admin/rentals");
+    return saved(`対応づけ ${r.matched} 件（変更 ${r.changed} 件${r.ambiguous.length ? `・複数の機種に当てはまる ${r.ambiguous.length} 件` : ""}）`);
+  } catch (e) {
+    return { ok: false, error: dbError(e) };
+  }
+}
+
+export async function setListingMatchAction(_prev: AdminState, fd: FormData): Promise<AdminState> {
+  await requireRole("editor");
+  const id = str(fd, "id");
+  if (!UUID.test(id)) return { ok: false, error: "不正な ID" };
+  const op = str(fd, "op");
+  const sql = requireSql();
+  try {
+    if (op === "auto") {
+      await admin.setListingMatch(sql, id, { deviceSlug: null, configId: null, manual: false });
+      await rematchListings(sql);
+    } else {
+      const [slug, config] = str(fd, "target").split("|");
+      const products = await cat.loadProducts(sql, { statuses: ["draft", "published"] });
+      const p = slug ? products.find((x) => x.slug === slug) : undefined;
+      if (slug && !p) return { ok: false, error: "機種が見つかりません" };
+      if (config && !p?.configs.some((c) => c.id === config)) return { ok: false, error: "構成が見つかりません" };
+      await admin.setListingMatch(sql, id, { deviceSlug: p?.slug ?? null, configId: config || null, manual: true });
+    }
+  } catch (e) {
+    return { ok: false, error: dbError(e) };
+  }
+  refreshCatalog("/admin/rentals");
+  return saved();
 }

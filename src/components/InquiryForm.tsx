@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { submitInquiryAction, type FormState } from "@/app/actions";
-import type { Term } from "@/lib/types";
-import { PREFECTURES } from "@/lib/validation";
+import { track } from "@/lib/analytics";
+import { CONSULT_MONTHS, PREFECTURES } from "@/lib/validation";
 
-type Quote = { deviceSlug: string; configId: string; grade: string; term: Term; template: string; quantity: number; supplierId: string };
+type Consult = { deviceSlug: string; configId: string; months: string; quantity: string };
 
 const field = "w-full border border-[#D6D6D0] rounded-lg px-3 py-2.5 text-sm bg-white";
 const Err = ({ msg }: { msg?: string }) => (msg ? <span className="text-xs text-[#B42318]">{msg}</span> : null);
@@ -22,16 +22,37 @@ function months(): { value: string; label: string }[] {
 }
 
 /** prefill：ログイン中の会員の会社情報（未ログインなら空） */
-export function InquiryForm({ quote, prefill = {} }: { quote: Quote; prefill?: Record<string, string> }) {
+export function InquiryForm({ consult, prefill = {} }: { consult: Consult; prefill?: Record<string, string> }) {
   const [state, action, pending] = useActionState<FormState, FormData>(submitInquiryAction, { ok: false, errors: {} });
-  const v = state.values ?? prefill;
+  const v = state.values ?? { ...prefill, quantity: consult.quantity, months: consult.months };
   const e = state.errors;
 
   return (
-    <form action={action} className="flex flex-col gap-4" noValidate>
-      {Object.entries(quote).map(([k, val]) => (
-        <input key={k} type="hidden" name={k === "quantity" ? "quantity" : k} value={String(val)} />
-      ))}
+    <form action={action} onSubmit={() => track("inquiry_submit", { device: consult.deviceSlug })} className="flex flex-col gap-4" noValidate>
+      <input type="hidden" name="deviceSlug" value={consult.deviceSlug} />
+      <input type="hidden" name="configId" value={consult.configId} />
+      <div className="grid grid-cols-2 gap-4">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-bold">
+            台数
+            <Req />
+          </span>
+          <input name="quantity" type="number" min={1} max={1000} inputMode="numeric" defaultValue={v.quantity} className={field} />
+          <Err msg={e.quantity} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-bold">利用期間</span>
+          <select name="months" defaultValue={v.months ?? ""} className={field}>
+            <option value="">未定</option>
+            {CONSULT_MONTHS.map((m) => (
+              <option key={m} value={m}>
+                {m}か月
+              </option>
+            ))}
+          </select>
+          <Err msg={e.months} />
+        </label>
+      </div>
       <div aria-hidden="true" className="hidden">
         <label>
           Webサイト
@@ -108,16 +129,16 @@ export function InquiryForm({ quote, prefill = {} }: { quote: Quote; prefill?: R
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" name="agree" defaultChecked={v.agree === "on"} className="mt-1" />
         <span>
-          入力した内容を、見積と審査のために選んだレンタル会社へ提供することに同意します（<Link href="/privacy">個人情報の取り扱い</Link>）。
+          入力した内容を xmall がご相談への回答のために利用することに同意します。レンタル会社へ情報をお渡しする場合は、事前にご確認します（<Link href="/privacy">個人情報の取り扱い</Link>）。
         </span>
       </label>
       <Err msg={e.agree} />
       <Err msg={e._} />
 
       <button type="submit" disabled={pending} className="min-h-12 px-5 py-3 rounded-[10px] text-base font-bold cursor-pointer bg-brand text-white disabled:opacity-60">
-        {pending ? "送信中…" : "この内容で問い合わせる（無料）"}
+        {pending ? "送信中…" : "この内容で相談する（無料）"}
       </button>
-      <p className="m-0 text-xs text-mute">問い合わせても契約にはなりません。審査・契約・配送はレンタル会社が行います。</p>
+      <p className="m-0 text-xs text-mute">相談しても契約にはなりません。契約・審査・配送は各レンタル会社が行います。</p>
     </form>
   );
 }

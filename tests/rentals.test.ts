@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
-import { capacitiesFromTitle, capacityGb, cpuFromText, detectMaker, htmlToLines, matchCatalog, parseTerm } from "../scripts/rentals/lib";
+import { capacitiesFromTitle, capacityGb, cpuFromText, detectMaker, htmlToLines, parseTerm } from "../scripts/rentals/lib";
+import { checkPattern, matchListing, type MatchProduct } from "../src/lib/rental-match";
+import { SEED_CATALOG } from "../src/lib/seed";
 import { parse as parseBusters } from "../scripts/rentals/sites/busters";
 import { parse as parseRentio } from "../scripts/rentals/sites/rentio";
 import { parse as parseTamaya } from "../scripts/rentals/sites/tamaya";
@@ -33,14 +35,51 @@ describe("スクレイピングの共通処理", () => {
     assert.equal(cpuFromText("MacBook Pro 14インチ (M5, 2025)"), "M5");
   });
 
-  test("カタログ機種への対応づけは世代まで一致したものだけ", () => {
-    const m = (title: string, memoryGb: number | null = null, storageGb: number | null = null) =>
-      matchCatalog({ title, maker: null, model: null, memoryGb, storageGb });
+  test("カタログ機種への対応づけは世代まで一致したものだけ（products.listing_match）", () => {
+    const products: MatchProduct[] = SEED_CATALOG.filter((d) => d.listingMatch).map((d) => ({
+      slug: d.slug,
+      listingMatch: d.listingMatch!,
+      variants: d.configs.map((c) => ({ code: c.id, attrs: c.attrs })),
+    }));
+    const m = (title: string, memoryGb: number | null = null, storageGb: number | null = null) => {
+      const r = matchListing(products, { title, maker: null, model: null, memoryGb, storageGb });
+      return { deviceSlug: r.deviceSlug, configId: r.configId };
+    };
     assert.deepEqual(m("MacBook Pro 14インチ (M5, 2025) 512GB SSD", 16, 512), { deviceSlug: "macbook-pro-14-m5", configId: "16-512" });
     assert.deepEqual(m("MacBook Pro 14インチ M5 Pro"), { deviceSlug: null, configId: null });
     assert.deepEqual(m("ThinkPad X1 Carbon Gen 13 Aura Edition"), { deviceSlug: "thinkpad-x1-carbon", configId: null });
     assert.deepEqual(m("ThinkPad X1 Carbon Gen8"), { deviceSlug: null, configId: null });
     assert.deepEqual(m("MacBook Air 13インチ 2018年モデル"), { deviceSlug: null, configId: null });
+    assert.deepEqual(m("Ｌｅｔ’ｓ ｎｏｔｅ ＣＦ-ＳＲ４"), { deviceSlug: "lets-note-sr", configId: null }, "全角は NFKC で揃えてから当てる");
+  });
+
+  test("構成：ストレージの記載が無ければ、メモリだけで 1 つに決まるときだけ対応づける", () => {
+    const p: MatchProduct = {
+      slug: "x",
+      listingMatch: "X",
+      variants: [
+        { code: "8-256", attrs: { memory_gb: 8, storage_gb: 256 } },
+        { code: "16-256", attrs: { memory_gb: 16, storage_gb: 256 } },
+        { code: "16-512", attrs: { memory_gb: 16, storage_gb: 512 } },
+      ],
+    };
+    const cfg = (memoryGb: number | null, storageGb: number | null) => matchListing([p], { title: "X", maker: null, model: null, memoryGb, storageGb }).configId;
+    assert.equal(cfg(8, null), "8-256");
+    assert.equal(cfg(16, null), null);
+    assert.equal(cfg(16, 512), "16-512");
+    assert.equal(cfg(32, 512), null);
+  });
+
+  test("2 つ以上の機種に当てはまる掲載は対応づけない。壊れた正規表現は検出する", () => {
+    const ps: MatchProduct[] = [
+      { slug: "a", listingMatch: "ThinkPad", variants: [] },
+      { slug: "b", listingMatch: "ThinkPad E14", variants: [] },
+    ];
+    const r = matchListing(ps, { title: "ThinkPad E14 Gen6", maker: null, model: null, memoryGb: null, storageGb: null });
+    assert.equal(r.deviceSlug, null);
+    assert.deepEqual(r.ambiguous, ["a", "b"]);
+    assert.equal(checkPattern("ThinkPad (E14"), "Invalid regular expression: /ThinkPad (E14/i: Unterminated group");
+    assert.equal(checkPattern("ThinkPad ?E14"), null);
   });
 
   test("HTML をテキスト行にし、全角・特殊文字を正規化する", () => {
@@ -93,8 +132,8 @@ describe("各社ページの解析（構造だけを再現した最小 HTML）",
       <p>「点検済みリユース品」の場合</p><p>「新品」の場合</p>`;
     const page = ld("【法人向け】Apple MacBook Pro 14インチ (M5, 2025) / 512GB SSD /16GB") + body + `<a href="/t/genre/pc/notepc/business-pc">他の法人向け</a>`;
     const l = parseRentio(page, "https://www.rentio.jp/products/abc")!;
-    assert.equal(l.deviceSlug, "macbook-pro-14-m5");
-    assert.equal(l.configId, "16-512");
+    assert.deepEqual([l.memoryGb, l.storageGb], [16, 512]);
+    assert.equal(l.deviceSlug, null, "機種との対応づけは取り込み時に DB で行う");
     assert.equal(l.condition, "selectable");
     assert.deepEqual(l.prices, [{ termUnit: "month", termValue: 9, priceYen: 15000, basis: "per_month", label: "月額制（9か月以上）" }]);
     assert.equal(parseRentio(ld("空気清浄機") + body, "https://www.rentio.jp/products/air"), null);

@@ -4,11 +4,12 @@ import type { SeedDevice } from "../lib/types";
  * 機種の初期データ（v0.4 から本番のカタログは DB。ここは `npm run catalog:seed` で DB に入れる元データ兼テスト用の固定データ）。
  * 画像は含めない（画像・favicon は Storage と media テーブルにだけ置く。管理画面で登録、環境間の移動は media:export / media:import）。
  * 以後の編集は管理画面 /admin/products で行う（このファイルを直しても DB には反映されない）。
- * verified: true の機種は仕様・公式価格を出典で確認済み。レンタル基準額（rentBase）はサンプル。
+ * verified: true の機種は仕様・公式価格を出典で確認済み。レンタル月額は持たない（各社の掲載価格を listingMatch で対応づける）。
  */
 export const DEVICES: SeedDevice[] = [
   {
     slug: "macbook-pro-14-m5",
+    listingMatch: "^(?=.*MacBook ?Pro 14)(?=.*\\bM5\\b(?! ?(Pro|Max))).*",
     brand: "Apple",
     name: "MacBook Pro 14インチ",
     chip: "M5",
@@ -20,11 +21,10 @@ export const DEVICES: SeedDevice[] = [
     releaseDate: "2025-10-22",
     uses: ["design", "dev"],
     configs: [
-      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512, officialPrice: 248800, rentBase: 9200, note: "標準構成" },
-      { id: "16-1t", label: "16GB / 1TB", memoryGb: 16, storageGb: 1024, officialPrice: 278800, rentBase: 10200 },
-      { id: "24-1t", label: "24GB / 1TB", memoryGb: 24, storageGb: 1024, officialPrice: 308800, rentBase: 11400 },
+      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512, officialPrice: 248800, note: "標準構成" },
+      { id: "16-1t", label: "16GB / 1TB", memoryGb: 16, storageGb: 1024, officialPrice: 278800 },
+      { id: "24-1t", label: "24GB / 1TB", memoryGb: 24, storageGb: 1024, officialPrice: 308800 },
     ],
-    suppliers: ["bayside", "techlease", "greenpc", "secondlab", "northit"],
     verified: true,
     bodyColor: "#3B3D42",
     sources: [
@@ -88,6 +88,7 @@ export const DEVICES: SeedDevice[] = [
   },
   {
     slug: "macbook-air-13",
+    listingMatch: "^(?=.*MacBook ?Air 13)(?=.*\\bM[2-5]\\b).*",
     brand: "Apple",
     name: "MacBook Air 13インチ",
     chip: "Apple Mシリーズ",
@@ -98,16 +99,16 @@ export const DEVICES: SeedDevice[] = [
     weightKg: 1.24,
     uses: ["office", "sales"],
     configs: [
-      { id: "16-256", label: "16GB / 256GB", memoryGb: 16, storageGb: 256, rentBase: 6100 },
-      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512, rentBase: 6800 },
+      { id: "16-256", label: "16GB / 256GB", memoryGb: 16, storageGb: 256 },
+      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512 },
     ],
-    suppliers: ["bayside", "techlease", "greenpc"],
     verified: false,
     bodyColor: "#D9D3C7",
     sources: [],
   },
   {
     slug: "thinkpad-x1-carbon",
+    listingMatch: "^(?=.*X1 ?Carbon)(?=.*(Gen ?1[23]\\b|Aura|Core ?Ultra)).*",
     brand: "Lenovo",
     name: "ThinkPad X1 Carbon",
     chip: "Intel Core Ultra 7",
@@ -118,16 +119,16 @@ export const DEVICES: SeedDevice[] = [
     weightKg: 1.0,
     uses: ["sales", "office"],
     configs: [
-      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512, rentBase: 6600 },
-      { id: "32-1t", label: "32GB / 1TB", memoryGb: 32, storageGb: 1024, rentBase: 8200 },
+      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512 },
+      { id: "32-1t", label: "32GB / 1TB", memoryGb: 32, storageGb: 1024 },
     ],
-    suppliers: ["techlease", "northit", "greenpc", "bayside"],
     verified: false,
     bodyColor: "#2A2C31",
     sources: [],
   },
   {
     slug: "thinkpad-e14",
+    listingMatch: "ThinkPad ?E14",
     brand: "Lenovo",
     name: "ThinkPad E14",
     chip: "Intel Core i5",
@@ -138,16 +139,16 @@ export const DEVICES: SeedDevice[] = [
     weightKg: 1.4,
     uses: ["office"],
     configs: [
-      { id: "16-256", label: "16GB / 256GB", memoryGb: 16, storageGb: 256, rentBase: 3300 },
-      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512, rentBase: 3600 },
+      { id: "16-256", label: "16GB / 256GB", memoryGb: 16, storageGb: 256 },
+      { id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512 },
     ],
-    suppliers: ["secondlab", "greenpc", "techlease", "bayside"],
     verified: false,
     bodyColor: "#33363C",
     sources: [],
   },
   {
     slug: "latitude-5450",
+    listingMatch: "Latitude ?5450",
     brand: "Dell",
     name: "Latitude 5450",
     chip: "Intel Core Ultra 5",
@@ -157,14 +158,14 @@ export const DEVICES: SeedDevice[] = [
     screenInch: 14,
     weightKg: 1.4,
     uses: ["office"],
-    configs: [{ id: "16-256", label: "16GB / 256GB", memoryGb: 16, storageGb: 256, rentBase: 3700 }],
-    suppliers: ["techlease", "greenpc"],
+    configs: [{ id: "16-256", label: "16GB / 256GB", memoryGb: 16, storageGb: 256 }],
     verified: false,
     bodyColor: "#4A4D55",
     sources: [],
   },
   {
     slug: "lets-note-sr",
+    listingMatch: "CF-SR|Let.?s ?note ?SR\\b",
     brand: "Panasonic",
     name: "Let's note SR",
     chip: "Intel Core Ultra 5",
@@ -174,14 +175,14 @@ export const DEVICES: SeedDevice[] = [
     screenInch: 12.4,
     weightKg: 0.9,
     uses: ["sales"],
-    configs: [{ id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512, rentBase: 5700 }],
-    suppliers: ["northit", "techlease"],
+    configs: [{ id: "16-512", label: "16GB / 512GB", memoryGb: 16, storageGb: 512 }],
     verified: false,
     bodyColor: "#C4C7CC",
     sources: [],
   },
   {
     slug: "precision-5690",
+    listingMatch: "Precision ?5690",
     brand: "Dell",
     name: "Precision 5690",
     chip: "Intel Core Ultra 7 + GPU",
@@ -191,8 +192,7 @@ export const DEVICES: SeedDevice[] = [
     screenInch: 16,
     weightKg: 2.1,
     uses: ["cad", "design"],
-    configs: [{ id: "32-1t", label: "32GB / 1TB", memoryGb: 32, storageGb: 1024, rentBase: 13800 }],
-    suppliers: ["techlease"],
+    configs: [{ id: "32-1t", label: "32GB / 1TB", memoryGb: 32, storageGb: 1024 }],
     verified: false,
     bodyColor: "#2D3036",
     sources: [],

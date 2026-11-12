@@ -1,5 +1,5 @@
 import {
-  capacityGb, cpuFromText, dedupePrices, detectMaker, htmlToLines, indexOfLine, links, matchCatalog, pairs, price, today, valueAfter, yen,
+  capacityGb, cpuFromText, dedupePrices, detectMaker, htmlToLines, indexOfLine, links, pairs, price, today, valueAfter, yen,
   type RentalListingData, type SiteScraper,
 } from "../lib";
 
@@ -82,7 +82,9 @@ export function parse(html: string, url: string): RentalListingData | null {
     inStock: null,
     priceTax: "unknown",
     terms: "1か月〜2年の料金表。期間が長いほど月額が下がる。配送料別。銀行振込。",
-    ...matchCatalog(base),
+    // 機種との対応づけは取り込み時に DB の products.listing_match で行う（lib/rental-match.ts）
+    deviceSlug: null,
+    configId: null,
     prices,
     fetchedAt: today(),
   };

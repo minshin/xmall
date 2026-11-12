@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { productPath } from "@/lib/urls";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -85,7 +86,7 @@ function DeviceStrip({ title, icon, devices, empty }: { title: string; icon: Rea
       {devices.length ? (
         <div className="flex gap-3 overflow-x-auto snap-x-strip pb-1">
           {devices.map((d) => (
-            <Link key={d.slug} href={`/pc/${d.slug}`} className="card lift shrink-0 w-56 overflow-hidden text-ink hover:no-underline">
+            <Link key={d.slug} href={productPath(d)} className="card lift shrink-0 w-56 overflow-hidden text-ink hover:no-underline">
               <div className="aspect-[16/10] bg-white overflow-hidden">
                 <DeviceThumb device={d} sizes="224px" />
               </div>

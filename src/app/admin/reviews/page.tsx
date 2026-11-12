@@ -61,7 +61,6 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/reviews"
             <span>・{r.acquisition === "rent" ? "レンタル" : "購入"}</span>
             {r.via && <span>・{r.via}</span>}
             <span>・{new Date(r.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</span>
-            {r.sample && <span>・サンプル</span>}
           </div>
           <p className="m-0 text-sm leading-relaxed whitespace-pre-line">{r.body}</p>
           <form action={moderateReviewAction} className="flex flex-wrap gap-2 items-center">

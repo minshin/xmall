@@ -1,8 +1,10 @@
 import type { Sql } from "./db";
 import { mediaUrl } from "./media";
 import { formatSpec } from "./seed";
+import { toCompare } from "./pricing";
 import type {
-  Category, Device, DeviceContent, DeviceImage, DeviceSpec, ProductStatus, Source, SpecAttribute, SpecValue, Use,
+  Category, Device, DeviceContent, DeviceImage, DeviceSpec, ProductStatus, RentalListingData, RentalOffer, RentalPriceData, Source,
+  SpecAttribute, SpecValue, Use,
 } from "./types";
 
 /**
@@ -93,13 +95,82 @@ type ProductRow = {
   verified: boolean;
   body_color: string;
   uses: string[];
-  supplier_ids: string[];
+  listing_match: string | null;
+  updated_at: string;
   content: DeviceContent | null;
   sources: Source[];
   specs: { key: string; label: string; unit: string | null; icon: string | null; highlight: boolean; filterable: boolean; value: SpecValue; display: string | null; plain: string | null; sort: number }[];
-  variants: { code: string; label: string; attrs: Record<string, SpecValue>; official_price: number | null; rent_base: number; note: string | null }[];
+  variants: { code: string; label: string; attrs: Record<string, SpecValue>; official_price: number | null; note: string | null }[];
   images: { media_id: string; path: string; width: number | null; height: number | null; alt: string; credit: string | null }[];
+  rentals: RentalRow[];
 };
+
+/** 機種に対応づいた掲載商品（loadProducts の副問い合わせ） */
+export type RentalRow = {
+  company_id: string;
+  company_name: string;
+  external_id: string;
+  url: string;
+  title: string;
+  config_id: string | null;
+  cpu: string | null;
+  memory_gb: number | null;
+  storage_gb: number | null;
+  condition: RentalListingData["condition"];
+  office_included: boolean | null;
+  in_stock: boolean | null;
+  price_tax: RentalListingData["priceTax"];
+  terms: string | null;
+  fetched_at: string;
+  prices: RentalPriceData[];
+};
+
+/**
+ * 掲載商品 → 比較用の 1 件。月額の表記が無いもの（短期の合計額だけ等）は比較できないので null。
+ * 1 か月の「期間合計」は 1 か月分の月額として扱う（同じ金額なので）。
+ */
+export function toRentalOffer(r: RentalRow): RentalOffer | null {
+  const plans = r.prices
+    .filter((p) => p.termUnit === "month" && (p.basis === "per_month" || p.termValue === 1))
+    .map((p) => ({ months: p.termValue, monthly: p.priceYen, label: p.label }))
+    .sort((a, b) => a.months - b.months);
+  if (!plans.length) return null;
+  const best = plans.reduce((a, b) => (b.monthly < a.monthly ? b : a));
+  const days = r.prices.filter((p) => p.termUnit === "day").map((p) => p.termValue);
+  const minTerm = days.length ? `${Math.min(...days)}日〜` : `${plans[0].months}か月〜`;
+  return {
+    key: `${r.company_id}:${r.external_id}`,
+    companyId: r.company_id,
+    companyName: r.company_name,
+    url: r.url,
+    title: r.title,
+    configId: r.config_id,
+    cpu: r.cpu,
+    memoryGb: r.memory_gb,
+    storageGb: r.storage_gb,
+    condition: r.condition,
+    officeIncluded: r.office_included,
+    inStock: r.in_stock,
+    priceTax: r.price_tax,
+    monthly: best.monthly,
+    monthlyTerm: best.months,
+    monthlyCompare: toCompare(best.monthly, r.price_tax),
+    plans,
+    minTerm,
+    terms: r.terms,
+    fetchedAt: r.fetched_at,
+  };
+}
+
+/** 同じ会社が同じ仕様・同じ月額で複数掲載しているもの（色違い等）は 1 件にまとめる */
+export function dedupeOffers(offers: RentalOffer[]): RentalOffer[] {
+  const seen = new Map<string, RentalOffer>();
+  for (const o of offers) {
+    const k = [o.companyId, o.configId, o.memoryGb, o.storageGb, o.cpu, o.monthly].join("|");
+    if (!seen.has(k)) seen.set(k, o);
+  }
+  return [...seen.values()];
+}
 
 export function toDevice(r: ProductRow): Device {
   const specs: DeviceSpec[] = r.specs.map((s) => ({
@@ -121,6 +192,8 @@ export function toDevice(r: ProductRow): Device {
     alt: m.alt || r.name,
     credit: m.credit ?? "",
   }));
+  const rentals = dedupeOffers(r.rentals.flatMap((x) => toRentalOffer(x) ?? [])).sort((a, b) => a.monthlyCompare - b.monthlyCompare);
+  const updatedAt = [r.updated_at.slice(0, 10), ...rentals.map((o) => o.fetchedAt)].sort().at(-1)!;
   return {
     id: r.id,
     slug: r.slug,
@@ -138,10 +211,11 @@ export function toDevice(r: ProductRow): Device {
       label: v.label,
       attrs: v.attrs,
       officialPrice: v.official_price ?? undefined,
-      rentBase: v.rent_base,
       note: v.note ?? undefined,
     })),
-    suppliers: r.supplier_ids,
+    rentals,
+    updatedAt,
+    listingMatch: r.listing_match,
     verified: r.verified,
     specs,
     content: r.content ?? undefined,
@@ -156,19 +230,28 @@ export async function loadProducts(sql: Sql, opts: { statuses?: ProductStatus[];
   const statuses = opts.statuses ?? ["published"];
   const rows = await sql<ProductRow[]>`
     select p.id, p.slug, p.category_id, c.name as category_name, p.brand_id, b.name as brand_name, p.name, p.subtitle,
-      p.release_date::text as release_date, p.status, p.verified, p.body_color, p.uses, p.supplier_ids, p.content, p.sources,
+      p.release_date::text as release_date, p.status, p.verified, p.body_color, p.uses, p.listing_match, p.updated_at::text as updated_at, p.content, p.sources,
       coalesce((select json_agg(json_build_object('key', a.key, 'label', a.label, 'unit', a.unit, 'icon', a.icon,
                   'highlight', a.highlight, 'filterable', a.filterable, 'value', ps.value, 'display', ps.display,
                   'plain', ps.plain, 'sort', a.sort) order by a.sort, a.key)
                 from public.product_specs ps join public.spec_attributes a on a.id = ps.attribute_id
                 where ps.product_id = p.id), '[]') as specs,
       coalesce((select json_agg(json_build_object('code', v.code, 'label', v.label, 'attrs', v.attrs,
-                  'official_price', v.official_price, 'rent_base', v.rent_base, 'note', v.note) order by v.sort, v.code)
+                  'official_price', v.official_price, 'note', v.note) order by v.sort, v.code)
                 from public.product_variants v where v.product_id = p.id), '[]') as variants,
       coalesce((select json_agg(json_build_object('media_id', m.id, 'path', m.path, 'width', m.width, 'height', m.height,
                   'alt', m.alt, 'credit', m.credit) order by pm.sort, m.created_at)
                 from public.product_media pm join public.media m on m.id = pm.media_id
-                where pm.product_id = p.id), '[]') as images
+                where pm.product_id = p.id), '[]') as images,
+      coalesce((select json_agg(json_build_object('company_id', l.company_id, 'company_name', rc.name, 'external_id', l.external_id,
+                  'url', l.url, 'title', l.title, 'config_id', l.config_id, 'cpu', l.cpu, 'memory_gb', l.memory_gb,
+                  'storage_gb', l.storage_gb, 'condition', l.condition, 'office_included', l.office_included,
+                  'in_stock', l.in_stock, 'price_tax', l.price_tax, 'terms', l.terms, 'fetched_at', l.fetched_at::text,
+                  'prices', coalesce((select json_agg(json_build_object('termUnit', rp.term_unit, 'termValue', rp.term_value,
+                              'priceYen', rp.price_yen, 'basis', rp.basis, 'label', rp.label) order by rp.term_unit, rp.term_value)
+                            from public.rental_prices rp where rp.listing_id = l.id), '[]')) order by l.company_id, l.external_id)
+                from public.rental_listings l join public.rental_companies rc on rc.id = l.company_id
+                where l.active and l.device_slug = p.slug), '[]') as rentals
     from public.products p
     join public.categories c on c.id = p.category_id
     join public.sites b on b.id = p.brand_id

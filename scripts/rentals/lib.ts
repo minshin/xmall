@@ -6,7 +6,6 @@
  *   * ページに書かれている値だけを取り出す。読み取れない項目は null にし、推測で埋めない。
  *   * 価格の税区分はページの表記どおり（表記が無ければ "unknown"）。
  */
-import { DEVICES } from "../../src/data/devices";
 import type { RentalCompanyData, RentalListingData, RentalPriceData } from "../../src/lib/types";
 
 export type { RentalCompanyData, RentalListingData, RentalPriceData };
@@ -146,34 +145,6 @@ export function dedupePrices(prices: (RentalPriceData | null)[]): RentalPriceDat
     out.push(p);
   }
   return out;
-}
-
-// ───────── カタログ機種との対応づけ ─────────
-
-/**
- * 掲載商品がカタログのどの機種・構成にあたるか。
- * 世代違いを混ぜないよう、機種名と世代が確実に読み取れるものだけ対応づける（迷ったら null）。
- */
-const RULES: { slug: string; test: (t: string) => boolean }[] = [
-  { slug: "macbook-pro-14-m5", test: (t) => /MacBook ?Pro 14/i.test(t) && /\bM5\b(?! ?(Pro|Max))/i.test(t) },
-  { slug: "macbook-air-13", test: (t) => /MacBook ?Air 13/i.test(t) && /\bM[2-5]\b/.test(t) },
-  { slug: "thinkpad-x1-carbon", test: (t) => /X1 ?Carbon/i.test(t) && /(Gen ?1[23]\b|Aura|Core ?Ultra)/i.test(t) },
-  { slug: "thinkpad-e14", test: (t) => /ThinkPad ?E14/i.test(t) },
-  { slug: "latitude-5450", test: (t) => /Latitude ?5450/i.test(t) },
-  { slug: "lets-note-sr", test: (t) => /CF-SR|Let'?s ?note ?SR\b/i.test(t) },
-  { slug: "precision-5690", test: (t) => /Precision ?5690/i.test(t) },
-];
-
-export function matchCatalog(l: Pick<RentalListingData, "title" | "maker" | "model" | "memoryGb" | "storageGb">): {
-  deviceSlug: string | null;
-  configId: string | null;
-} {
-  const text = [l.maker, l.model, l.title].filter(Boolean).join(" ");
-  const rule = RULES.find((r) => r.test(text));
-  if (!rule) return { deviceSlug: null, configId: null };
-  const device = DEVICES.find((d) => d.slug === rule.slug);
-  const cfg = device?.configs.find((c) => c.memoryGb === l.memoryGb && c.storageGb === l.storageGb);
-  return { deviceSlug: rule.slug, configId: cfg?.id ?? null };
 }
 
 /** タイトル等から「512GB SSD」「16GB」を拾う（SSD に隣接する方をストレージとみなす） */

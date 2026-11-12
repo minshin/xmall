@@ -2,8 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Heart, History, Search } from "lucide-react";
+import { Analytics } from "@/components/Analytics";
 import { UserMenu, UserMenuPlaceholder } from "@/components/UserMenu";
+import { getCategories, getDevices } from "@/lib/catalog-server";
 import { SITE_NAME, SITE_URL } from "@/lib/format";
+import { landingFacets } from "@/lib/landing";
+import { brandPath, categoryPath, pricePath } from "@/lib/urls";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +19,52 @@ export const metadata: Metadata = {
   description:
     "法人向けのノートPC・モニター・タブレットなどIT機器を、複数のレンタル会社と主要ショップで比較。品質グレードと設定テンプレートを標準化し、はじめての方にもわかる詳しい解説付き。",
   openGraph: { siteName: SITE_NAME, locale: "ja_JP", type: "website" },
+  // Search Console / Bing Webmaster Tools の所有確認（値は環境変数。無ければ出さない）
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION || undefined,
+    other: process.env.BING_SITE_VERIFICATION ? { "msvalidate.01": process.env.BING_SITE_VERIFICATION } : undefined,
+  },
 };
+
+/** 品目・メーカー・価格帯へのリンク（検索エンジンが一覧ページをたどれるように） */
+async function CatalogLinks({ variant }: { variant: "header" | "footer" }) {
+  const [cats, all] = await Promise.all([getCategories(), getDevices()]);
+  const live = cats.filter((c) => all.some((d) => d.categoryId === c.id));
+  if (variant === "header")
+    return (
+      <>
+        {live.map((c) => (
+          <Link key={c.id} href={categoryPath(c.id)} className="text-sub hover:text-ink hover:no-underline whitespace-nowrap">
+            {c.name}
+          </Link>
+        ))}
+      </>
+    );
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 pb-4">
+      {live.map((c) => {
+        const f = landingFacets(all, c.id);
+        return (
+          <div key={c.id} className="flex flex-col gap-1.5">
+            <Link href={categoryPath(c.id)} className="text-sub font-medium">
+              {c.name}のレンタル
+            </Link>
+            {f.brands.map((b) => (
+              <Link key={b.id} href={brandPath(c.id, b.id)} className="text-mute">
+                {b.name}
+              </Link>
+            ))}
+            {f.prices.map((p) => (
+              <Link key={p.band.id} href={pricePath(c.id, p.band.id)} className="text-mute">
+                {p.band.label}
+              </Link>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -37,9 +86,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               />
             </form>
             <nav aria-label="メイン" className="hidden md:flex gap-5 text-[12px]">
-              <Link href="/guide/grades" className="text-sub hover:text-ink hover:no-underline whitespace-nowrap">
-                品質グレード
-              </Link>
+              <CatalogLinks variant="header" />
               <Link href="/partners" className="text-sub hover:text-ink hover:no-underline whitespace-nowrap">
                 掲載について
               </Link>
@@ -62,15 +109,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <div className="flex-1">{children}</div>
         <footer className="mt-16 bg-ground border-t border-line">
           <div className="mx-auto max-w-[1240px] px-4 sm:px-6 py-6 text-[12px] text-faint flex flex-col gap-2 leading-relaxed">
-            <p className="m-0">レンタルの審査・契約・配送は各レンタル会社が、購入は各ショップが行います。リンク経由の購入で紹介料を受け取ることがあります。</p>
+            <CatalogLinks variant="footer" />
+            <p className="m-0">レンタル月額は各レンタル会社の公開ページに掲載されている価格です（取得日を表示）。契約・審査・配送は各社が行います。</p>
             <p className="m-0 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2">
               <span>© ZUX Inc.</span>
               <Link href="/privacy" className="text-mute">個人情報の取り扱い</Link>
-              <Link href="/guide/grades" className="text-mute">品質グレード基準</Link>
               <Link href="/partners" className="text-mute">掲載をご希望の方へ</Link>
             </p>
           </div>
         </footer>
+        <Analytics />
       </body>
     </html>
   );

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { checkPattern } from "./rental-match";
+import { RESERVED_SLUGS } from "./urls";
 
 /** 管理画面の入力検証（Server Action で必ず通す） */
 
@@ -22,9 +24,12 @@ export const newProductSchema = z.object({
   brandId: slugLike,
 });
 
+/** 機種の slug（一覧ページの URL と重ならないもの） */
+const productSlug = slugLike.refine((v) => !RESERVED_SLUGS.includes(v), "brand / price / use は URL で使うため機種の slug にできません");
+
 export const productBaseSchema = z.object({
   name: s(120).min(1, "名前を入力してください"),
-  slug: slugLike,
+  slug: productSlug,
   categoryId: slugLike,
   brandId: slugLike,
   subtitle: opt(60),
@@ -37,7 +42,15 @@ export const productBaseSchema = z.object({
   verified: z.boolean(),
   bodyColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "#RRGGBB 形式で入力してください"),
   uses: z.array(z.enum(USES)),
-  supplierIds: z.array(slugLike),
+  listingMatch: z
+    .string()
+    .trim()
+    .max(300)
+    .superRefine((v, ctx) => {
+      const err = v ? checkPattern(v) : null;
+      if (err) ctx.addIssue({ code: "custom", message: `掲載商品の対応づけ：${err}` });
+    })
+    .transform((v) => (v === "" ? null : v)),
 });
 
 const jsonArray = <T extends z.ZodTypeAny>(item: T) =>
@@ -70,7 +83,6 @@ export const variantsSchema = jsonArray(
     label: s(60).min(1, "表示名を入力してください"),
     attrs: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
     officialPrice: z.number().int().positive().nullable(),
-    rentBase: z.number().int().positive("基準月額を入力してください"),
     note: z.string().trim().max(60).nullable(),
   }),
 ).refine((vs) => new Set(vs.map((v) => v.code)).size === vs.length, "構成コードが重複しています");

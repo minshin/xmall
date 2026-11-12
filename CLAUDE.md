@@ -37,11 +37,12 @@ xmall.jp 是面向日本法人的 **IT设备 租赁＋购买 比价网站**。�
 src/
   app/
     page.tsx                  首页＝商品目录（顶部筛选标签＋图卡网格）
-    pc/[slug]/page.tsx        机型详情（租/买比价、解说、FAQ、口碑）
+    [category]/page.tsx       品类一览（/laptop）；brand/[brand]・price/[band]・use/[use] 是厂商・价格带・用途一览（检索入口，见 lib/landing.ts）
+    [category]/[slug]/page.tsx 机型详情（各社掲載价格比较・期间别料金表、解说、FAQ、口碑）。旧 /pc/[slug] 308 跳转
     api/devices/...           REST API
     api/mcp/route.ts          MCP 端点（JSON-RPC, Streamable HTTP 无状态）
-    inquiry/                  询价表单（/inquiry?device=…）与完成页
-    admin/                    管理后台：概要・商品（规格/配置/图片/解说）・品类与规格项・网站与 favicon・图片库・会员・口碑・询价
+    inquiry/                  相谈表单（/inquiry?device=…，不含金额）与完成页
+    admin/                    管理后台：概要・商品（规格/配置/图片/解说/掲載对应）・租赁掲載・品类与规格项・网站与 favicon・图片库・会员・口碑・相谈
     login/ signup/ auth/      登录・注册・密码重置・回调（邮件确认/OAuth）
     account/                  会员页（公司信息・收藏・最近看过・改密码）
     actions.ts                公开的 Server Actions（点赞、参考になった、口碑、询价、阅览）
@@ -49,17 +50,18 @@ src/
     sitemap.ts robots.ts llms.txt/route.ts privacy/
   proxy.ts                    刷新登录会话；/admin・/account 未登录→登录页；/admin 非 editor→404
   components/                 UI 组件（客户端交互组件以 "use client" 标明）
-  data/                       初始数据 devices（只用于 catalog:seed 与测试）、master（等级・模板・样本供应商・商店）
+  data/                       初始数据 devices（只用于 catalog:seed 与测试）
   lib/                        领域逻辑：pricing、catalog（纯函数）、catalog-server（带缓存的读取）、jsonld、mcp
                               db（连接）、repo / repo-catalog / repo-admin / repo-accounts（纯 SQL，可测）
                               community（口碑等的缓存读取＋访客 Cookie）、auth（当前会员・权限）、storage（上传到 Storage）
                               validation / validation-admin（zod）
 scripts/rentals/              实在租赁公司掲載价格的抓取（sites/ 每家一个解析器）与导入
 scripts/favicons.ts           抓取 favicon → Storage ＋ sites.favicon_id
+scripts/catalog-from-rentals.ts 从真实掲載登记机型（≥2 家公司在租的型号）
 scripts/catalog-seed.ts       初始数据（src/data/devices.ts：网站・商品・规格・配置・解说，不含图片）→ DB
 scripts/media.ts              图片素材的导出・导入（备份、环境间迁移；导出目录必须在仓库外）
 scripts/admin-grant.ts        给会员加 admin / editor 权限（建第一个管理员用）
-supabase/                     config.toml、migrations/、seed.sql（本地样本口碑）、data/rental-listings.json（抓取结果）
+supabase/                     config.toml、migrations/、seed.sql（空：不放样本）、data/rental-listings.json（抓取结果）
 tests/                        领域逻辑与 MCP 的测试
 docs/                         概念、数据模型、内容规范、MCP 规格、路线图
 ```
@@ -76,7 +78,8 @@ npm run dev        # http://localhost:3000   管理后台 /admin   本地邮件 
 npm test           # 设了 TEST_DATABASE_URL（库名以 _test 结尾）时也跑 DB 测试
 npm run db:reset   # 重建本地库（之后需再跑 catalog:seed・rentals:import，并重新注册管理员）
 npm run rentals:scrape   # 抓取各租赁公司公开页面 → supabase/data/rental-listings.json
-npm run rentals:import   # 把 JSON 导入 DB（upsert；消失的商品标 active=false）
+npm run rentals:import   # 把 JSON 导入 DB（upsert；消失的商品标 active=false），并按 listing_match 重新对应机型
+npm run catalog:from-rentals            # 预览：哪些在租型号可以登记为机型（-- --apply 登记）
 npm run favicons         # 抓取未设置的 favicon 写入 Storage（--force 全部重抓；抓不到的在后台上传）
 npm run media:export -- ~/xmall-media   # 导出图片素材（备份 / 迁移到其他环境）
 npm run media:import -- ~/xmall-media   # 导入图片素材
@@ -87,7 +90,9 @@ npm run build
 
 - 页面文案用日语；文档用中文；代码注释日语・中文均可。
 - 价格统一为日元整数（税込）。租金为每台每月。例外：实在租赁公司的掲載价格按页面原样保存，税区分记在 `price_tax`，页面上照样标注。
-- 样本数据（虚构的租赁公司、商店价格、口碑）必须在页面上标"サンプル"，上线前替换为真实数据。
+- **不用样本/虚构数据**：价格只用各社公开页面的掲載价（标取得日・税区分）和有出处的厂商直销价；读不到就不显示，不用系数推算。
+- URL 用 `lib/urls.ts` 的函数生成，不手写 `/pc/…`。机型 slug 不能是 brand / price / use。
+- 计测：GA4（`NEXT_PUBLIC_GA_ID`）、Search Console / Bing 验证（`GOOGLE_SITE_VERIFICATION` / `BING_SITE_VERIFICATION`）都走环境变量；事件用 `lib/analytics.ts` 的 `track()`，不发送个人信息。
 - 改数据模型时同步更新 `docs/data-model.md`、`src/lib/types.ts` 和 MCP 的 schema。
 - 改了商品目录（后台的 Action）要 `updateTag(CATALOG_TAG)`，公开页才会更新。
 - 改 DB 结构：新建 `supabase/migrations/<时间戳>_<名字>.sql`，不改已有 migration。

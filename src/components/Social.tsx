@@ -184,7 +184,6 @@ export function ReviewList({ reviews, helped }: { reviews: Review[]; helped: str
               <Stars value={r.rating} />
               <span className="flex gap-1">
                 <span className="text-[11px] bg-ground text-sub px-2 py-0.5 rounded-full">{r.acquisition === "rent" ? "レンタル" : "購入"}</span>
-                {r.sample && <span className="text-[11px] bg-warn-soft text-warn px-2 py-0.5 rounded-full">サンプル</span>}
               </span>
             </div>
             <p className="m-0 text-sm leading-relaxed whitespace-pre-line line-clamp-5">{r.body}</p>

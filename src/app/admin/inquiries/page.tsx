@@ -1,17 +1,14 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { SUPPLIERS, TEMPLATES } from "@/data/master";
 import { getDevices } from "@/lib/catalog-server";
 import { getSql } from "@/lib/db";
-import { yen } from "@/lib/format";
 import { findConfig } from "@/lib/pricing";
 import * as repo from "@/lib/repo";
-import type { TemplateCode } from "@/lib/types";
 import { updateInquiryAction } from "../actions";
 import { NoDb } from "../NoDb";
 
-const STATUS: Record<repo.InquiryStatus, string> = { new: "未対応", forwarded: "レンタル会社に連絡済み", closed: "完了" };
+const STATUS: Record<repo.InquiryStatus, string> = { new: "未対応", forwarded: "案内済み", closed: "完了" };
 
 export default function AdminInquiries({ searchParams }: PageProps<"/admin/inquiries">) {
   return (
@@ -49,7 +46,6 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/inquirie
       {!rows.length && <p className="m-0 text-sm text-sub">該当する問い合わせはありません。</p>}
       {rows.map((q) => {
         const device = devices.find((d) => d.slug === q.deviceSlug);
-        const supplier = SUPPLIERS.find((s) => s.id === q.supplierId);
         return (
           <details key={q.id} className="card p-5" open={q.status === "new"}>
             <summary className="flex flex-wrap gap-3 items-baseline">
@@ -58,7 +54,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/inquirie
               </span>
               <b>{q.company}</b>
               <span className="text-sm">
-                {device?.name ?? q.deviceSlug} × {q.quantity}台 ／ {supplier?.name ?? q.supplierId}
+                {device?.name ?? q.deviceSlug} × {q.quantity}台{q.months ? ` ／ ${q.months}か月` : ""}
               </span>
               <span className="text-xs text-mute ml-auto">{new Date(q.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}</span>
             </summary>
@@ -71,11 +67,9 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/inquirie
                 <Row k="利用開始" v={q.startMonth ?? "未定"} />
               </dl>
               <dl className="m-0 flex flex-col gap-1">
-                <Row k="構成" v={device ? findConfig(device, q.configId).label : q.configId} />
-                <Row k="グレード / 期間" v={`${q.grade} ／ ${q.term}か月`} />
-                <Row k="テンプレート" v={TEMPLATES[q.template as TemplateCode]?.label ?? q.template} />
-                <Row k="月額/台" v={yen(q.monthlyPerUnit)} />
-                <Row k="総額" v={yen(q.contractTotal)} />
+                <Row k="構成" v={q.configId ? (device ? findConfig(device, q.configId).label : q.configId) : "指定なし"} />
+                <Row k="台数" v={`${q.quantity}台`} />
+                <Row k="利用期間" v={q.months ? `${q.months}か月` : "未定"} />
               </dl>
             </div>
             {q.message && <p className="mt-3 mb-0 text-sm whitespace-pre-line bg-ground rounded-lg p-3">{q.message}</p>}

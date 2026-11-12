@@ -44,8 +44,7 @@ async function main() {
   const out: RentalDataFile = { generatedAt: new Date().toISOString(), companies, listings };
   mkdirSync(dirname(DATA_FILE), { recursive: true });
   writeFileSync(DATA_FILE, JSON.stringify(out, null, 2) + "\n");
-  const matched = listings.filter((l) => l.deviceSlug).length;
-  console.log(`書き出し: ${DATA_FILE}\n  会社 ${companies.length} / 商品 ${listings.length}（カタログ機種に対応 ${matched}）`);
+  console.log(`書き出し: ${DATA_FILE}\n  会社 ${companies.length} / 商品 ${listings.length}（機種との対応づけは rentals:import で行う）`);
 }
 
 main().catch((e) => {

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { GRADE_CODES, TEMPLATE_CODES } from "../data/master";
 
 /** フォーム入力の検証（サーバー側で必ず通す） */
 
@@ -39,17 +38,19 @@ export const PREFECTURES = [
   "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
 ] as const;
 
-/** 見積条件（URL のクエリ・フォームの hidden から来る） */
-export const quoteSchema = z.object({
+const blankToNull = (v: unknown) => (v === "" || v === undefined || v === null ? null : v);
+
+/** 相談の条件（機種ページのリンク・フォームから来る）。金額は持たない */
+export const consultSchema = z.object({
   deviceSlug: slug,
-  configId: z.string().min(1),
-  grade: z.enum(GRADE_CODES as [string, ...string[]]),
-  term: z.coerce.number().pipe(z.union([z.literal(12), z.literal(24), z.literal(36)])),
-  template: z.enum(TEMPLATE_CODES as [string, ...string[]]),
-  quantity: z.coerce.number().int().min(1).max(1000),
-  supplierId: z.string().min(1),
+  configId: z.preprocess(blankToNull, z.string().regex(/^[a-z0-9-]{1,40}$/).nullable()),
+  months: z.preprocess(blankToNull, z.coerce.number().int().min(1, "利用期間を選んでください").max(60).nullable()),
+  quantity: z.coerce.number({ message: "台数を入力してください" }).int("台数は整数で入力してください").min(1, "台数は1台以上で入力してください").max(1000, "1000台を超える場合はご要望欄にご記入ください"),
 });
-export type QuoteInput = z.infer<typeof quoteSchema>;
+export type ConsultInput = z.infer<typeof consultSchema>;
+
+/** 相談フォームで選べる利用期間（か月） */
+export const CONSULT_MONTHS = [1, 3, 6, 12, 24, 36];
 
 export const contactSchema = z.object({
   company: trimmed(1, 100, "会社名"),

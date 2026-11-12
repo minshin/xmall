@@ -19,7 +19,8 @@
     "catalog:seed": "tsx --env-file=.env.local scripts/catalog-seed.ts",
     "admin:grant": "tsx --env-file=.env.local scripts/admin-grant.ts",
     "media:export": "tsx --env-file=.env.local scripts/media.ts export",
-    "media:import": "tsx --env-file=.env.local scripts/media.ts import"
+    "media:import": "tsx --env-file=.env.local scripts/media.ts import",
+    "catalog:from-rentals": "tsx --env-file=.env.local scripts/catalog-from-rentals.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

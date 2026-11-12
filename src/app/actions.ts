@@ -6,10 +6,8 @@ import { getDevice } from "@/lib/catalog-server";
 import { currentUserId } from "@/lib/auth";
 import { ensureVisitorId, TAG } from "@/lib/community";
 import { getSql } from "@/lib/db";
-import { quote } from "@/lib/pricing";
 import * as repo from "@/lib/repo";
-import type { GradeCode, TemplateCode, Term } from "@/lib/types";
-import { contactSchema, firstErrors, HONEYPOT, quoteSchema, reviewSchema } from "@/lib/validation";
+import { consultSchema, contactSchema, firstErrors, HONEYPOT, reviewSchema } from "@/lib/validation";
 
 export type FormState = { ok: boolean; errors: Record<string, string>; values?: Record<string, string> };
 
@@ -78,35 +76,22 @@ export async function submitReviewAction(_prev: FormState, fd: FormData): Promis
   return { ok: true, errors: {} };
 }
 
-// ───────── レンタルの問い合わせ ─────────
+// ───────── レンタルの相談（金額は持たない） ─────────
 
 export async function submitInquiryAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const values = valuesOf(fd);
   if (fd.get(HONEYPOT)) redirect("/inquiry/thanks");
 
-  const q = quoteSchema.safeParse({
+  const q = consultSchema.safeParse({
     deviceSlug: fd.get("deviceSlug"),
     configId: fd.get("configId"),
-    grade: fd.get("grade"),
-    term: fd.get("term"),
-    template: fd.get("template"),
+    months: fd.get("months"),
     quantity: fd.get("quantity"),
-    supplierId: fd.get("supplierId"),
   });
-  if (!q.success) return { ok: false, errors: { _: "見積条件が正しくありません。機種ページからやり直してください。" }, values };
-
-  // 金額はクライアントの値を信用せず、サーバーで計算し直す
+  if (!q.success) return { ok: false, errors: firstErrors(q.error), values };
   const device = await getDevice(q.data.deviceSlug);
   if (!device) return { ok: false, errors: { _: "機種が見つかりません。機種ページからやり直してください。" }, values };
-  const priced = quote(device, {
-    configId: q.data.configId,
-    grade: q.data.grade as GradeCode,
-    term: q.data.term as Term,
-    template: q.data.template as TemplateCode,
-    quantity: q.data.quantity,
-    supplierId: q.data.supplierId,
-  });
-  if (!priced) return { ok: false, errors: { _: "選んだレンタル会社はこの条件に対応していません。" }, values };
+  if (q.data.configId && !device.configs.some((x) => x.id === q.data.configId)) q.data.configId = null;
 
   const c = contactSchema.safeParse({
     company: fd.get("company") ?? "",
@@ -126,7 +111,7 @@ export async function submitInquiryAction(_prev: FormState, fd: FormData): Promi
   if ((await repo.recentCount(sql, "inquiries", vid)) >= LIMIT.inquiries)
     return { ok: false, errors: { _: "本日の問い合わせ数の上限に達しました。お急ぎの場合はお電話ください。" }, values };
 
-  await repo.insertInquiry(sql, q.data, priced, c.data, vid, await currentUserId());
-  // TODO(v0.3): レンタル会社・運営への通知メール
-  redirect(`/inquiry/thanks?supplier=${encodeURIComponent(priced.supplierId)}`);
+  await repo.insertInquiry(sql, q.data, c.data, vid, await currentUserId());
+  // TODO: 運営への通知メール
+  redirect(`/inquiry/thanks?device=${encodeURIComponent(device.slug)}`);
 }

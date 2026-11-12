@@ -1,5 +1,5 @@
 import {
-  capacityGb, cpuFromText, dedupePrices, detectMaker, h1, htmlToLines, indexOfLine, links, matchCatalog, pairs, price, today, valueAfter, yen,
+  capacityGb, cpuFromText, dedupePrices, detectMaker, h1, htmlToLines, indexOfLine, links, pairs, price, today, valueAfter, yen,
   type RentalListingData, type SiteScraper,
 } from "../lib";
 
@@ -88,7 +88,9 @@ export function parse(html: string, url: string): RentalListingData | null {
     inStock: null,
     priceTax: taxIncl ? "incl" : "unknown",
     terms: "3日から。3か月以上は月額。往復送料無料。",
-    ...matchCatalog(base),
+    // 機種との対応づけは取り込み時に DB の products.listing_match で行う（lib/rental-match.ts）
+    deviceSlug: null,
+    configId: null,
     prices: deduped,
     fetchedAt: today(),
   };

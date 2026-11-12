@@ -1,5 +1,5 @@
 import type { Sql } from "./db";
-import type { ContactInput, QuoteInput, ReviewInput } from "./validation";
+import type { ContactInput, ConsultInput, ReviewInput } from "./validation";
 import type { DeviceStats, RentalCompanyData, RentalListing, RentalListingData, RentalPriceData, Review, ReviewStatus, Use } from "./types";
 
 /**
@@ -73,7 +73,6 @@ const toReview = (r: ReviewRow): Review => ({
   body: r.body,
   helpful: r.helpful,
   createdAt: r.created_at.toISOString(),
-  sample: r.is_sample,
 });
 
 export async function approvedReviews(sql: Sql, slug: string, limit = 50): Promise<Review[]> {
@@ -123,21 +122,19 @@ export async function insertReview(sql: Sql, input: ReviewInput, visitorId: stri
 
 // ───────── 問い合わせ ─────────
 
+/** 相談（金額は持たない。価格は各社の掲載ページで確認してもらう） */
 export async function insertInquiry(
   sql: Sql,
-  q: QuoteInput,
-  priced: { monthlyPerUnit: number; contractTotal: number },
+  q: ConsultInput,
   c: ContactInput,
   visitorId: string,
   userId: string | null = null,
 ): Promise<string> {
   const [{ id }] = await sql<{ id: string }[]>`
     insert into public.inquiries (
-      user_id, visitor_id, device_slug, config_id, grade, term_months, template, quantity, supplier_id,
-      monthly_per_unit, contract_total, company, contact_name, email, phone, prefecture, start_month, message)
+      user_id, visitor_id, device_slug, config_id, term_months, quantity, company, contact_name, email, phone, prefecture, start_month, message)
     values (
-      ${userId}, ${visitorId}, ${q.deviceSlug}, ${q.configId}, ${q.grade}, ${q.term}, ${q.template}, ${q.quantity}, ${q.supplierId},
-      ${priced.monthlyPerUnit}, ${priced.contractTotal}, ${c.company}, ${c.contactName}, ${c.email}, ${c.phone},
+      ${userId}, ${visitorId}, ${q.deviceSlug}, ${q.configId}, ${q.months}, ${q.quantity}, ${c.company}, ${c.contactName}, ${c.email}, ${c.phone},
       ${c.prefecture}, ${c.startMonth}, ${c.message})
     returning id`;
   return id;
@@ -171,14 +168,10 @@ export interface Inquiry {
   id: string;
   createdAt: string;
   deviceSlug: string;
-  configId: string;
-  grade: string;
-  term: number;
-  template: string;
+  configId: string | null;
+  /** 利用予定の期間（か月）。未定なら null */
+  months: number | null;
   quantity: number;
-  supplierId: string;
-  monthlyPerUnit: number;
-  contractTotal: number;
   company: string;
   contactName: string;
   email: string;
@@ -200,13 +193,8 @@ export async function listInquiries(sql: Sql, status?: InquiryStatus, limit = 20
     createdAt: (r.created_at as Date).toISOString(),
     deviceSlug: r.device_slug,
     configId: r.config_id,
-    grade: r.grade,
-    term: r.term_months,
-    template: r.template,
+    months: r.term_months,
     quantity: r.quantity,
-    supplierId: r.supplier_id,
-    monthlyPerUnit: r.monthly_per_unit,
-    contractTotal: r.contract_total,
     company: r.company,
     contactName: r.contact_name,
     email: r.email,
@@ -239,6 +227,7 @@ export async function adminCounts(sql: Sql) {
 /**
  * scripts/rentals の取得結果を取り込む（1 トランザクション）。
  * 会社・商品は upsert、価格は商品ごとに入れ替え。取り込んだ会社のうち今回含まれない商品は active = false。
+ * 機種との対応（device_slug / config_id）はここでは触らない。続けて rental-match.ts の rematchListings を呼ぶ。
  */
 export async function importRentalData(
   sql: Sql,
@@ -260,12 +249,12 @@ export async function importRentalData(
         insert into public.rental_listings (company_id, external_id, url, title, maker, model, cpu, memory_gb, storage_gb, os,
           condition, office_included, in_stock, price_tax, terms, device_slug, config_id, fetched_at, active)
         values (${l.companyId}, ${l.externalId}, ${l.url}, ${l.title}, ${l.maker}, ${l.model}, ${l.cpu}, ${l.memoryGb}, ${l.storageGb},
-          ${l.os}, ${l.condition}, ${l.officeIncluded}, ${l.inStock}, ${l.priceTax}, ${l.terms}, ${l.deviceSlug}, ${l.configId},
+          ${l.os}, ${l.condition}, ${l.officeIncluded}, ${l.inStock}, ${l.priceTax}, ${l.terms}, null, null,
           ${l.fetchedAt}, true)
         on conflict (company_id, external_id) do update set url = excluded.url, title = excluded.title, maker = excluded.maker,
           model = excluded.model, cpu = excluded.cpu, memory_gb = excluded.memory_gb, storage_gb = excluded.storage_gb, os = excluded.os,
           condition = excluded.condition, office_included = excluded.office_included, in_stock = excluded.in_stock,
-          price_tax = excluded.price_tax, terms = excluded.terms, device_slug = excluded.device_slug, config_id = excluded.config_id,
+          price_tax = excluded.price_tax, terms = excluded.terms,
           fetched_at = excluded.fetched_at, active = true, updated_at = now()
         returning id`;
       await tx`delete from public.rental_prices where listing_id = ${id}`;

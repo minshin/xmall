@@ -20,6 +20,10 @@ const SITES: { id: string; name: string; kind: "maker" | "shop" | "rental"; url:
   { id: "lenovo", name: "Lenovo", kind: "maker", url: "https://www.lenovo.com/jp/ja/" },
   { id: "dell", name: "Dell", kind: "maker", url: "https://www.dell.com/ja-jp" },
   { id: "panasonic", name: "Panasonic", kind: "maker", url: "https://panasonic.jp/" },
+  { id: "hp", name: "HP", kind: "maker", url: "https://jp.ext.hp.com/" },
+  { id: "fujitsu", name: "富士通", kind: "maker", url: "https://www.fmworld.net/" },
+  { id: "dynabook", name: "Dynabook", kind: "maker", url: "https://dynabook.com/" },
+  { id: "nec", name: "NEC", kind: "maker", url: "https://www.nec.co.jp/" },
   { id: "amazon", name: "Amazon", kind: "shop", url: "https://www.amazon.co.jp/" },
   { id: "rakuten", name: "楽天市場", kind: "shop", url: "https://www.rakuten.co.jp/" },
   { id: "yodobashi", name: "ヨドバシ.com", kind: "shop", url: "https://www.yodobashi.com/" },
@@ -57,13 +61,13 @@ async function main() {
       await sql.begin(async (tx) => {
         const [{ id }] = await tx<{ id: string }[]>`
           insert into public.products (slug, category_id, brand_id, name, subtitle, release_date, status, verified, body_color, uses,
-            supplier_ids, content, sources, sort)
+            listing_match, content, sources, sort)
           values (${d.slug}, ${d.category}, ${BRAND_ID[d.brand]}, ${d.name}, ${d.chip}, ${d.releaseDate ?? null}, 'published',
-            ${d.verified}, ${d.bodyColor}, ${d.uses}, ${d.suppliers}, ${d.content ? tx.json(content as never) : null},
+            ${d.verified}, ${d.bodyColor}, ${d.uses}, ${d.listingMatch ?? null}, ${d.content ? tx.json(content as never) : null},
             ${tx.json(d.sources as never)}, ${i})
           on conflict (slug) do update set category_id = excluded.category_id, brand_id = excluded.brand_id, name = excluded.name,
             subtitle = excluded.subtitle, release_date = excluded.release_date, verified = excluded.verified,
-            body_color = excluded.body_color, uses = excluded.uses, supplier_ids = excluded.supplier_ids, content = excluded.content,
+            body_color = excluded.body_color, uses = excluded.uses, listing_match = excluded.listing_match, content = excluded.content,
             sources = excluded.sources, sort = excluded.sort, updated_at = now()
           returning id`;
         await tx`delete from public.product_specs where product_id = ${id}`;
@@ -75,9 +79,9 @@ async function main() {
         }
         await tx`delete from public.product_variants where product_id = ${id}`;
         for (const [k, c] of d.configs.entries()) {
-          await tx`insert into public.product_variants (product_id, code, label, attrs, official_price, rent_base, note, sort)
+          await tx`insert into public.product_variants (product_id, code, label, attrs, official_price, note, sort)
             values (${id}, ${c.id}, ${c.label}, ${tx.json({ memory_gb: c.memoryGb, storage_gb: c.storageGb })}, ${c.officialPrice ?? null},
-              ${c.rentBase}, ${c.note ?? null}, ${k})`;
+              ${c.note ?? null}, ${k})`;
         }
       });
       n++;

@@ -42,7 +42,7 @@ export const SPEC_ROW_KEY: Record<string, string> = {
   "発売・メーカー価格": "launch",
 };
 
-export const BRAND_ID: Record<string, string> = { Apple: "apple", Lenovo: "lenovo", Dell: "dell", Panasonic: "panasonic" };
+export const BRAND_ID: Record<string, string> = { Apple: "apple", Lenovo: "lenovo", Dell: "dell", Panasonic: "panasonic", HP: "hp", 富士通: "fujitsu", Dynabook: "dynabook", NEC: "nec" };
 
 /** 機種単位のスペック値（key → { value, display?, plain? }） */
 export function seedSpecValues(d: SeedDevice): Map<string, { value: SpecValue; display?: string; plain?: string }> {
@@ -101,16 +101,17 @@ export function seedToDevice(d: SeedDevice): Device {
       label: c.label,
       attrs: { memory_gb: c.memoryGb, storage_gb: c.storageGb },
       officialPrice: c.officialPrice,
-      rentBase: c.rentBase,
       note: c.note,
     })),
-    suppliers: d.suppliers,
+    rentals: [],
+    listingMatch: d.listingMatch ?? null,
     verified: d.verified,
     specs,
     content: d.content ? content : undefined,
     sources: d.sources,
     bodyColor: d.bodyColor,
     images: [],
+    updatedAt: "2026-11-12",
   };
 }
 

@@ -142,7 +142,6 @@ export interface VariantRow {
   label: string;
   attrs: Record<string, string | number | boolean>;
   officialPrice: number | null;
-  rentBase: number;
   note: string | null;
 }
 
@@ -151,17 +150,15 @@ export function VariantsEditor({ attrs, initial }: { attrs: VariantAttr[]; initi
     code: v.code,
     label: v.label,
     officialPrice: v.officialPrice?.toString() ?? "",
-    rentBase: v.rentBase ? String(v.rentBase) : "",
     note: v.note ?? "",
     ...Object.fromEntries(attrs.map((a) => [`a:${a.key}`, v.attrs[a.key] === undefined ? "" : String(v.attrs[a.key])])),
   });
-  const blank: Row = { code: "", label: "", officialPrice: "", rentBase: "", note: "", ...Object.fromEntries(attrs.map((a) => [`a:${a.key}`, ""])) };
+  const blank: Row = { code: "", label: "", officialPrice: "", note: "", ...Object.fromEntries(attrs.map((a) => [`a:${a.key}`, ""])) };
   const r = useRows(initial.map(toRow), blank);
   const json = r.rows.map((row) => ({
     code: row.code.trim(),
     label: row.label.trim(),
     officialPrice: row.officialPrice ? Number(row.officialPrice) : null,
-    rentBase: Number(row.rentBase || 0),
     note: row.note.trim() || null,
     attrs: Object.fromEntries(
       attrs
@@ -204,7 +201,6 @@ export function VariantsEditor({ attrs, initial }: { attrs: VariantAttr[]; initi
               ),
             )}
             {field(i, "officialPrice", "メーカー価格（円）", "number")}
-            {field(i, "rentBase", "基準月額（円）", "number")}
             {field(i, "note", "メモ")}
           </div>
           <RowControls i={i} n={r.rows.length} move={r.move} remove={r.remove} />

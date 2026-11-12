@@ -6,7 +6,8 @@ import * as repo from "../src/lib/repo";
 import * as accounts from "../src/lib/repo-accounts";
 import * as admin from "../src/lib/repo-admin";
 import * as cat from "../src/lib/repo-catalog";
-import { contactSchema, quoteSchema, reviewSchema } from "../src/lib/validation";
+import { rematchListings } from "../src/lib/rental-match";
+import { contactSchema, consultSchema, reviewSchema } from "../src/lib/validation";
 
 /**
  * DB を使うテスト。TEST_DATABASE_URL（DB名が _test で終わるもの）があるときだけ実行。
@@ -85,7 +86,7 @@ describe("repo（Postgres）", { skip }, () => {
   });
 
   test("問い合わせの保存・一覧・ステータス更新", async () => {
-    const q = quoteSchema.parse({ deviceSlug: slug, configId: "16-512", grade: "A", term: "24", template: "OFFICE", quantity: "3", supplierId: "bayside" });
+    const q = consultSchema.parse({ deviceSlug: slug, configId: "16-512", months: "24", quantity: "3" });
     const c = contactSchema.parse({
       company: "株式会社テスト",
       contactName: "山田 太郎",
@@ -97,14 +98,15 @@ describe("repo（Postgres）", { skip }, () => {
       agree: "on",
     });
     assert.equal(c.message, null);
-    const id = await repo.insertInquiry(sql, q, { monthlyPerUnit: 8920, contractTotal: 642240 }, c, A);
+    const id = await repo.insertInquiry(sql, q, c, A);
     const [row] = await repo.listInquiries(sql, "new");
     assert.equal(row.id, id);
     assert.equal(row.quantity, 3);
-    assert.equal(row.term, 24);
-    assert.equal(await repo.updateInquiry(sql, id, "forwarded", "ベイサイドに電話済み"), true);
+    assert.equal(row.months, 24);
+    assert.equal(row.configId, "16-512");
+    assert.equal(await repo.updateInquiry(sql, id, "forwarded", "Rentio を案内済み"), true);
     assert.equal((await repo.listInquiries(sql, "new")).length, 0);
-    assert.equal((await repo.listInquiries(sql))[0].adminNote, "ベイサイドに電話済み");
+    assert.equal((await repo.listInquiries(sql))[0].adminNote, "Rentio を案内済み");
     const counts = await repo.adminCounts(sql);
     assert.equal(counts.inquiries_30d, 1);
     assert.equal(counts.new_inquiries, 0);
@@ -119,12 +121,29 @@ describe("repo（Postgres）", { skip }, () => {
       prices: [{ termUnit: "month" as const, termValue: 1, priceYen, basis: "per_month" as const, label: "1ヶ月" }],
     });
     await repo.importRentalData(sql, { companies: [company], listings: [listing("a", 15000), listing("b", 9000)] });
+    assert.equal((await repo.rentalListings(sql, { deviceSlug: slug })).length, 0, "取り込みでは対応づけない（JSON の deviceSlug は使わない）");
+    // 機種（公開・構成 16-512）を用意して、正規表現で対応づける
+    await sql`insert into public.sites (id, name, kind) values ('apple-test', 'Apple', 'maker')`;
+    const uid = "33333333-3333-4333-8333-333333333333";
+    const pid = await admin.createProduct(sql, { slug, categoryId: "laptop", brandId: "apple-test", name: "MacBook Pro 14インチ" }, uid);
+    await admin.saveVariants(sql, pid, [{ code: "16-512", label: "16GB / 512GB", attrs: { memory_gb: 16, storage_gb: 512 }, officialPrice: null, note: null }], uid);
+    await sql`update public.products set status = 'published', listing_match = 'MacBook Pro 14 M5' where id = ${pid}`;
+    const m = await rematchListings(sql);
+    assert.equal(m.matched, 2);
     assert.deepEqual((await repo.rentalListings(sql, { deviceSlug: slug })).map((l) => [l.externalId, l.prices[0].priceYen]), [["b", 9000], ["a", 15000]]);
 
     const r = await repo.importRentalData(sql, { companies: [company], listings: [listing("a", 14000)] });
     assert.equal(r.deactivated, 1);
     const now = await repo.rentalListings(sql, { deviceSlug: slug });
-    assert.deepEqual(now.map((l) => [l.externalId, l.prices[0].priceYen, l.companyName]), [["a", 14000, "ACME"]]);
+    assert.deepEqual(now.map((l) => [l.externalId, l.prices[0].priceYen, l.companyName]), [["a", 14000, "ACME"]], "取り込み直しても対応づけは残る");
+    // 機種ページ側：掲載が比較用の形で付く（構成もメモリ・ストレージで対応づく）
+    const [d] = await cat.loadProducts(sql, { slug });
+    assert.deepEqual(d.rentals.map((o) => [o.companyName, o.monthly, o.configId]), [["ACME", 14000, "16-512"]]);
+    // 手で「対応なし」にしたものは、やり直しても戻らない
+    const [{ id: lid }] = await sql<{ id: string }[]>`select id from public.rental_listings where external_id = 'a'`;
+    await admin.setListingMatch(sql, lid, { deviceSlug: null, configId: null, manual: true });
+    await rematchListings(sql);
+    assert.equal((await repo.rentalListings(sql, { deviceSlug: slug })).length, 0);
   });
 
   test("閲覧者数は訪問者ごとに1回だけ数え、集計ビューに出る", async () => {
@@ -168,20 +187,21 @@ describe("repo（Postgres）", { skip }, () => {
       { attributeId: size.id, value: 23.8, display: null, plain: "机に置いてちょうどいい大きさ" },
       { attributeId: res.id, value: "フルHD", display: null, plain: null },
     ], uid);
-    await admin.saveVariants(sql, id, [{ code: "std", label: "標準", attrs: {}, officialPrice: 19800, rentBase: 900, note: null }], uid);
+    await admin.saveVariants(sql, id, [{ code: "std", label: "標準", attrs: {}, officialPrice: 19800, note: null }], uid);
     await admin.updateProductBase(sql, id, {
       slug: "acme-24", categoryId: "monitor", brandId: "acme-maker", name: "ACME 24", subtitle: "24型", releaseDate: null,
-      status: "published", verified: false, bodyColor: "#333333", uses: ["office"], supplierIds: ["bayside"],
+      status: "published", verified: false, bodyColor: "#333333", uses: ["office"], listingMatch: "ACME ?24",
     }, uid);
     const [d] = await cat.loadProducts(sql, { slug: "acme-24" });
     assert.equal(d.categoryName, "モニター");
     assert.equal(d.brand, "ACME");
     assert.deepEqual(d.specs.map((x) => [x.key, x.display]), [["size_inch", "23.8インチ"], ["resolution", "フルHD"]]);
     assert.equal(d.specs[0].highlight, true);
-    assert.equal(d.configs[0].rentBase, 900);
+    assert.equal(d.configs[0].officialPrice, 19800);
+    assert.equal(d.listingMatch, "ACME ?24");
     await assert.rejects(() => admin.saveVariants(sql, id, [
-      { code: "a", label: "A", attrs: {}, officialPrice: null, rentBase: 1, note: null },
-      { code: "a", label: "B", attrs: {}, officialPrice: null, rentBase: 1, note: null },
+      { code: "a", label: "A", attrs: {}, officialPrice: null, note: null },
+      { code: "a", label: "B", attrs: {}, officialPrice: null, note: null },
     ], uid), "構成コードの重複は DB でも弾く");
     assert.equal(await admin.deleteSite(sql, "acme-maker"), false, "製品が使っているメーカーは消せない");
   });

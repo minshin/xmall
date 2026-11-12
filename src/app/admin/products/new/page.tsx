@@ -54,7 +54,7 @@ async function Body() {
             <input name="name" placeholder="例：MacBook Air 13インチ" className={input} required />
           </label>
           <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-mute">slug（URL：/pc/〇〇。英小文字・数字・ハイフン）</span>
+            <span className="text-mute">slug（URL：/品目/〇〇。英小文字・数字・ハイフン）</span>
             <input name="slug" placeholder="例：macbook-air-13-m4" className={input} required pattern="[a-z0-9-]+" />
           </label>
         </ActionForm>
