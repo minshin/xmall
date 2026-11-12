@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { GRADE_CODES, TEMPLATE_CODES } from "../data/master";
-import { getDevice } from "./catalog";
 
 /** フォーム入力の検証（サーバー側で必ず通す） */
 
@@ -18,7 +17,8 @@ const optional = (max: number, label: string) =>
     .max(max, `${label}は${max}文字以内で入力してください`)
     .transform((v) => (v === "" ? null : v));
 
-const slug = z.string().refine((s) => !!getDevice(s), "機種が見つかりません");
+/** 機種 slug の形式だけ見る（存在確認は DB を読む呼び出し側で行う） */
+const slug = z.string().regex(/^[a-z0-9-]{1,80}$/, "機種が見つかりません");
 
 export const reviewSchema = z.object({
   deviceSlug: slug,
@@ -81,3 +81,29 @@ export function firstErrors(error: z.ZodError): Record<string, string> {
 
 /** スパム対策のハニーポット（人には見えない欄に入力があれば bot とみなす） */
 export const HONEYPOT = "website";
+
+// ───────── 会員 ─────────
+
+export const emailSchema = z.string().trim().toLowerCase().email("メールアドレスの形式が正しくありません").max(254);
+export const passwordSchema = z.string().min(8, "パスワードは8文字以上にしてください").max(72, "パスワードは72文字以内にしてください");
+
+export const signInSchema = z.object({ email: emailSchema, password: z.string().min(1, "パスワードを入力してください") });
+export const signUpSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  agree: z.literal("on", { message: "利用規約と個人情報の取り扱いへの同意が必要です" }),
+});
+
+export const profileSchema = z.object({
+  fullName: optional(50, "お名前"),
+  companyName: optional(100, "会社名"),
+  department: optional(50, "部署"),
+  phone: optional(30, "電話番号").refine((v) => v === null || /^[0-9+\-() ]{8,}$/.test(v), "電話番号の形式が正しくありません"),
+  companySize: z
+    .enum(["", "1-9", "10-49", "50-299", "300-999", "1000+"])
+    .transform((v) => (v === "" ? null : v)),
+});
+
+/** ログイン後の戻り先（サイト内の相対パスだけ許可） */
+export const safeNext = (v: unknown, fallback = "/account") =>
+  typeof v === "string" && v.startsWith("/") && !v.startsWith("//") && !v.startsWith("/\\") ? v : fallback;

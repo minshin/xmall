@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { getDevice, searchDevices, summarize } from "../src/lib/catalog";
+import { searchDevices, specValue, summarize } from "../src/lib/catalog";
+import { SEED_CATALOG } from "../src/lib/seed";
 import { quote, rentalOffers, rentOrBuy, shopOffers } from "../src/lib/pricing";
 
+const getDevice = (slug: string) => SEED_CATALOG.find((d) => d.slug === slug);
 const mbp = getDevice("macbook-pro-14-m5")!;
 
 test("MacBook Pro 14 M5 の公式価格は出典どおり", () => {
@@ -55,8 +57,8 @@ test("見積総額 = 月額×台数×期間 + 初期費用×台数", () => {
 });
 
 test("検索：OS・月額上限で絞り込める", () => {
-  const mac = searchDevices({ os: "macOS" });
-  assert.ok(mac.length >= 2 && mac.every((d) => d.os === "macOS"));
-  const cheap = searchDevices({ maxMonthlyRent: 4000 });
+  const mac = searchDevices(SEED_CATALOG, { os: "macOS" });
+  assert.ok(mac.length >= 2 && mac.every((d) => specValue(getDevice(d.slug)!, "os") === "macOS"));
+  const cheap = searchDevices(SEED_CATALOG, { maxMonthlyRent: 4000 });
   assert.ok(cheap.every((d) => (d.rentFrom ?? Infinity) <= 4000));
 });

@@ -3,7 +3,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { cookies } from "next/headers";
 import { getSql } from "./db";
 import * as repo from "./repo";
-import type { DeviceStats, Review } from "./types";
+import type { DeviceStats, RentalListing, Review } from "./types";
 
 /**
  * 画面から使う読み取り（キャッシュ付き）と訪問者 ID。
@@ -15,7 +15,7 @@ export const TAG = {
   reviews: (slug: string) => `reviews:${slug}`,
 };
 
-const EMPTY_STATS: DeviceStats = { likes: 0, reviewCount: 0, rating: null };
+const EMPTY_STATS: DeviceStats = { likes: 0, reviewCount: 0, rating: null, views: 0 };
 
 async function safe<T>(fallback: T, fn: () => Promise<T>): Promise<T> {
   try {
@@ -83,4 +83,17 @@ export async function viewerState(slug: string): Promise<{ liked: boolean; helpe
     liked: await repo.hasLiked(sql, slug, vid),
     helped: await repo.helpedReviewIds(sql, slug, vid),
   }));
+}
+
+// ───────── 実在レンタル会社の掲載価格（scripts/rentals で取り込み。更新頻度は低いので hours） ─────────
+
+export const RENTALS_TAG = "rentals";
+
+export async function getRentalListings(deviceSlug?: string): Promise<RentalListing[]> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag(RENTALS_TAG);
+  const sql = getSql();
+  if (!sql) return [];
+  return safe([], () => repo.rentalListings(sql, { deviceSlug }));
 }

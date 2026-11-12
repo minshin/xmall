@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { getDevice } from "@/lib/catalog";
+import { getDevices } from "@/lib/catalog-server";
 import { getSql } from "@/lib/db";
 import { USE_LABEL } from "@/lib/labels";
 import * as repo from "@/lib/repo";
@@ -33,6 +33,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/reviews"
   const sql = getSql();
   if (!sql) return <NoDb />;
   const reviews = await repo.reviewsByStatus(sql, status);
+  const names = Object.fromEntries((await getDevices()).map((d) => [d.slug, d.name]));
 
   return (
     <>
@@ -52,7 +53,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/reviews"
         <article key={r.id} className="card p-5 flex flex-col gap-2.5">
           <div className="flex flex-wrap gap-2 text-xs text-mute">
             <Link href={`/pc/${r.deviceSlug}#reviews`} className="font-bold">
-              {getDevice(r.deviceSlug)?.name ?? r.deviceSlug}
+              {names[r.deviceSlug] ?? r.deviceSlug}
             </Link>
             <span>{"★".repeat(r.rating)}</span>
             <span>{r.author}</span>

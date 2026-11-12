@@ -1,6 +1,6 @@
 import type { Sql } from "./db";
 import type { ContactInput, QuoteInput, ReviewInput } from "./validation";
-import type { DeviceStats, Review, ReviewStatus, Use } from "./types";
+import type { DeviceStats, RentalCompanyData, RentalListing, RentalListingData, RentalPriceData, Review, ReviewStatus, Use } from "./types";
 
 /**
  * DB アクセス（SQL のみ）。Next.js に依存しないのでテストから直接呼べる。
@@ -10,9 +10,23 @@ import type { DeviceStats, Review, ReviewStatus, Use } from "./types";
 // ───────── 集計 ─────────
 
 export async function deviceStats(sql: Sql): Promise<Record<string, DeviceStats>> {
-  const rows = await sql<{ device_slug: string; likes: number; review_count: number; rating_avg: number | null }[]>`
-    select device_slug, likes, review_count, rating_avg from public.device_stats`;
-  return Object.fromEntries(rows.map((r) => [r.device_slug, { likes: r.likes, reviewCount: r.review_count, rating: r.rating_avg }]));
+  const rows = await sql<{ device_slug: string; likes: number; review_count: number; rating_avg: number | null; views: number }[]>`
+    select device_slug, likes, review_count, rating_avg, views from public.device_stats`;
+  return Object.fromEntries(
+    rows.map((r) => [r.device_slug, { likes: r.likes, reviewCount: r.review_count, rating: r.rating_avg, views: r.views }]),
+  );
+}
+
+// ───────── 閲覧者数 ─────────
+
+/** 閲覧を記録（訪問者ごとに 1 回）し、その機種の閲覧者数を返す */
+export async function recordView(sql: Sql, slug: string, visitorId: string, userId: string | null = null): Promise<number> {
+  await sql`
+    insert into public.device_views (device_slug, visitor_id, user_id) values (${slug}, ${visitorId}, ${userId})
+    on conflict (device_slug, visitor_id) do update set last_viewed_at = now(), view_count = public.device_views.view_count + 1,
+      user_id = coalesce(excluded.user_id, public.device_views.user_id)`;
+  const [{ n }] = await sql<{ n: number }[]>`select count(*)::int as n from public.device_views where device_slug = ${slug}`;
+  return n;
 }
 
 // ───────── いいね ─────────
@@ -23,10 +37,10 @@ export async function hasLiked(sql: Sql, slug: string, visitorId: string): Promi
 }
 
 /** いいねを切り替え、切り替え後の状態と件数を返す */
-export async function toggleLike(sql: Sql, slug: string, visitorId: string): Promise<{ liked: boolean; likes: number }> {
+export async function toggleLike(sql: Sql, slug: string, visitorId: string, userId: string | null = null): Promise<{ liked: boolean; likes: number }> {
   return sql.begin(async (tx) => {
     const del = await tx`delete from public.device_likes where device_slug = ${slug} and visitor_id = ${visitorId}`;
-    if (del.count === 0) await tx`insert into public.device_likes (device_slug, visitor_id) values (${slug}, ${visitorId})`;
+    if (del.count === 0) await tx`insert into public.device_likes (device_slug, visitor_id, user_id) values (${slug}, ${visitorId}, ${userId})`;
     const [{ n }] = await tx<{ n: number }[]>`select count(*)::int as n from public.device_likes where device_slug = ${slug}`;
     return { liked: del.count === 0, likes: n };
   });
@@ -99,10 +113,10 @@ export async function recentCount(sql: Sql, table: "reviews" | "inquiries", visi
   return n;
 }
 
-export async function insertReview(sql: Sql, input: ReviewInput, visitorId: string): Promise<string> {
+export async function insertReview(sql: Sql, input: ReviewInput, visitorId: string, userId: string | null = null): Promise<string> {
   const [{ id }] = await sql<{ id: string }[]>`
-    insert into public.reviews (device_slug, visitor_id, rating, author, use_case, acquisition, via, body)
-    values (${input.deviceSlug}, ${visitorId}, ${input.rating}, ${input.author}, ${input.use}, ${input.acquisition}, ${input.via}, ${input.body})
+    insert into public.reviews (device_slug, visitor_id, user_id, rating, author, use_case, acquisition, via, body)
+    values (${input.deviceSlug}, ${visitorId}, ${userId}, ${input.rating}, ${input.author}, ${input.use}, ${input.acquisition}, ${input.via}, ${input.body})
     returning id`;
   return id;
 }
@@ -115,13 +129,14 @@ export async function insertInquiry(
   priced: { monthlyPerUnit: number; contractTotal: number },
   c: ContactInput,
   visitorId: string,
+  userId: string | null = null,
 ): Promise<string> {
   const [{ id }] = await sql<{ id: string }[]>`
     insert into public.inquiries (
-      visitor_id, device_slug, config_id, grade, term_months, template, quantity, supplier_id,
+      user_id, visitor_id, device_slug, config_id, grade, term_months, template, quantity, supplier_id,
       monthly_per_unit, contract_total, company, contact_name, email, phone, prefecture, start_month, message)
     values (
-      ${visitorId}, ${q.deviceSlug}, ${q.configId}, ${q.grade}, ${q.term}, ${q.template}, ${q.quantity}, ${q.supplierId},
+      ${userId}, ${visitorId}, ${q.deviceSlug}, ${q.configId}, ${q.grade}, ${q.term}, ${q.template}, ${q.quantity}, ${q.supplierId},
       ${priced.monthlyPerUnit}, ${priced.contractTotal}, ${c.company}, ${c.contactName}, ${c.email}, ${c.phone},
       ${c.prefecture}, ${c.startMonth}, ${c.message})
     returning id`;
@@ -217,4 +232,123 @@ export async function adminCounts(sql: Sql) {
       (select count(*)::int from public.inquiries where created_at > now() - interval '30 days') as inquiries_30d,
       (select count(*)::int from public.device_likes) as likes_total`;
   return r;
+}
+
+// ───────── 実在レンタル会社の掲載価格 ─────────
+
+/**
+ * scripts/rentals の取得結果を取り込む（1 トランザクション）。
+ * 会社・商品は upsert、価格は商品ごとに入れ替え。取り込んだ会社のうち今回含まれない商品は active = false。
+ */
+export async function importRentalData(
+  sql: Sql,
+  data: { companies: RentalCompanyData[]; listings: RentalListingData[] },
+): Promise<{ companies: number; listings: number; prices: number; deactivated: number }> {
+  return sql.begin(async (tx) => {
+    for (const c of data.companies) {
+      await tx`
+        insert into public.rental_companies (id, name, operator, url, audience, note)
+        values (${c.id}, ${c.name}, ${c.operator}, ${c.url}, ${c.audience}, ${c.note})
+        on conflict (id) do update set name = excluded.name, operator = excluded.operator, url = excluded.url,
+          audience = excluded.audience, note = excluded.note, updated_at = now()`;
+    }
+    let prices = 0;
+    const seen: Record<string, string[]> = {};
+    for (const l of data.listings) {
+      (seen[l.companyId] ??= []).push(l.externalId);
+      const [{ id }] = await tx<{ id: string }[]>`
+        insert into public.rental_listings (company_id, external_id, url, title, maker, model, cpu, memory_gb, storage_gb, os,
+          condition, office_included, in_stock, price_tax, terms, device_slug, config_id, fetched_at, active)
+        values (${l.companyId}, ${l.externalId}, ${l.url}, ${l.title}, ${l.maker}, ${l.model}, ${l.cpu}, ${l.memoryGb}, ${l.storageGb},
+          ${l.os}, ${l.condition}, ${l.officeIncluded}, ${l.inStock}, ${l.priceTax}, ${l.terms}, ${l.deviceSlug}, ${l.configId},
+          ${l.fetchedAt}, true)
+        on conflict (company_id, external_id) do update set url = excluded.url, title = excluded.title, maker = excluded.maker,
+          model = excluded.model, cpu = excluded.cpu, memory_gb = excluded.memory_gb, storage_gb = excluded.storage_gb, os = excluded.os,
+          condition = excluded.condition, office_included = excluded.office_included, in_stock = excluded.in_stock,
+          price_tax = excluded.price_tax, terms = excluded.terms, device_slug = excluded.device_slug, config_id = excluded.config_id,
+          fetched_at = excluded.fetched_at, active = true, updated_at = now()
+        returning id`;
+      await tx`delete from public.rental_prices where listing_id = ${id}`;
+      for (const p of l.prices) {
+        await tx`
+          insert into public.rental_prices (listing_id, term_unit, term_value, price_yen, basis, label)
+          values (${id}, ${p.termUnit}, ${p.termValue}, ${p.priceYen}, ${p.basis}, ${p.label})
+          on conflict do nothing`;
+        prices++;
+      }
+    }
+    let deactivated = 0;
+    for (const [companyId, ids] of Object.entries(seen)) {
+      const r = await tx`
+        update public.rental_listings set active = false, updated_at = now()
+        where company_id = ${companyId} and active and not (external_id = any(${ids}))`;
+      deactivated += r.count;
+    }
+    return { companies: data.companies.length, listings: data.listings.length, prices, deactivated };
+  });
+}
+
+type RentalListingRow = {
+  company_id: string;
+  company_name: string;
+  company_operator: string | null;
+  external_id: string;
+  url: string;
+  title: string;
+  maker: string | null;
+  model: string | null;
+  cpu: string | null;
+  memory_gb: number | null;
+  storage_gb: number | null;
+  os: string | null;
+  condition: RentalListingData["condition"];
+  office_included: boolean | null;
+  in_stock: boolean | null;
+  price_tax: RentalListingData["priceTax"];
+  terms: string | null;
+  device_slug: string | null;
+  config_id: string | null;
+  fetched_at: Date | string;
+  prices: RentalPriceData[];
+};
+
+const toRentalListing = (r: RentalListingRow): RentalListing => ({
+  companyId: r.company_id,
+  companyName: r.company_name,
+  companyOperator: r.company_operator,
+  externalId: r.external_id,
+  url: r.url,
+  title: r.title,
+  maker: r.maker,
+  model: r.model,
+  cpu: r.cpu,
+  memoryGb: r.memory_gb,
+  storageGb: r.storage_gb,
+  os: r.os,
+  condition: r.condition,
+  officeIncluded: r.office_included,
+  inStock: r.in_stock,
+  priceTax: r.price_tax,
+  terms: r.terms,
+  deviceSlug: r.device_slug,
+  configId: r.config_id,
+  fetchedAt: typeof r.fetched_at === "string" ? r.fetched_at.slice(0, 10) : r.fetched_at.toISOString().slice(0, 10),
+  prices: r.prices,
+});
+
+/** 掲載中の商品（device_slug を指定するとその機種に対応するものだけ）。各社・最安の月額順 */
+export async function rentalListings(sql: Sql, opts: { deviceSlug?: string; limit?: number } = {}): Promise<RentalListing[]> {
+  const rows = await sql<RentalListingRow[]>`
+    select l.company_id, c.name as company_name, c.operator as company_operator, l.external_id, l.url, l.title, l.maker, l.model,
+      l.cpu, l.memory_gb, l.storage_gb, l.os, l.condition, l.office_included, l.in_stock, l.price_tax, l.terms,
+      l.device_slug, l.config_id, l.fetched_at::text as fetched_at,
+      coalesce((select json_agg(json_build_object('termUnit', p.term_unit, 'termValue', p.term_value, 'priceYen', p.price_yen,
+                  'basis', p.basis, 'label', p.label) order by p.term_unit, p.term_value)
+                from public.rental_prices p where p.listing_id = l.id), '[]') as prices,
+      (select min(p.price_yen) from public.rental_prices p where p.listing_id = l.id and p.basis = 'per_month') as min_monthly
+    from public.rental_listings l join public.rental_companies c on c.id = l.company_id
+    where l.active ${opts.deviceSlug ? sql`and l.device_slug = ${opts.deviceSlug}` : sql``}
+    order by min_monthly nulls last, l.company_id, l.external_id
+    limit ${opts.limit ?? 500}`;
+  return rows.map(toRentalListing);
 }

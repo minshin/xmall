@@ -2,13 +2,13 @@
 // ステートレスな JSON-RPC 2.0。route handler から handleMcpMessage を呼ぶ。
 
 import { GRADES, TEMPLATES, TERMS } from "../data/master";
-import { getDevice, searchDevices, USE_LABEL } from "./catalog";
+import { searchDevices, specValue, USE_LABEL } from "./catalog";
 import { SITE_URL } from "./format";
 import { findConfig, quote, rentalOffers, rentOrBuy, shopOffers } from "./pricing";
-import type { GradeCode, Os, TemplateCode, Term, Use } from "./types";
+import type { Device, GradeCode, TemplateCode, Term, Use } from "./types";
 
 const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "xmall", version: "0.1.0" };
+const SERVER_INFO = { name: "xmall", version: "0.4.0" };
 
 type Json = Record<string, unknown>;
 interface RpcRequest {
@@ -27,13 +27,14 @@ const tplArg = { template: { type: "string", enum: Object.keys(TEMPLATES), descr
 export const TOOLS = [
   {
     name: "search_devices",
-    description: "法人向けIT機器（ノートPC）を条件で検索し、レンタル最安月額と購入最安価格を返す。",
+    description: "法人向けIT機器（ノートPC・モニター・タブレットなど）を条件で検索し、レンタル最安月額と購入最安価格を返す。",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", description: "機種名・ブランドなどのキーワード" },
+        category: { type: "string", description: "品目 id（例：laptop, monitor, tablet）" },
         brand: { type: "string" },
-        os: { type: "string", enum: ["macOS", "Windows"] },
+        os: { type: "string", description: "OS（例：macOS, Windows）" },
         use: { type: "string", enum: Object.keys(USE_LABEL), description: "用途" },
         maxMonthlyRent: { type: "integer", description: "レンタル月額の上限（円）" },
         minMemoryGb: { type: "integer" },
@@ -42,7 +43,7 @@ export const TOOLS = [
   },
   {
     name: "get_device",
-    description: "機種の詳細（構成、やさしいスペック解説、使い方の例、FAQ、出典）を返す。",
+    description: "機種の詳細（品目、スペックとやさしい解説、構成、使い方の例、FAQ、出典）を返す。",
     inputSchema: { type: "object", properties: deviceArg, required: ["slug"] },
   },
   {
@@ -79,36 +80,38 @@ const asTpl = (v: unknown): TemplateCode => (typeof v === "string" && v in TEMPL
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 const num = (v: unknown) => (v === undefined || v === null || v === "" ? undefined : Number(v));
 
-function requireDevice(args: Json) {
+function requireDevice(devices: Device[], args: Json) {
   const slug = str(args.slug);
-  const d = slug ? getDevice(slug) : undefined;
+  const d = slug ? devices.find((x) => x.slug === slug) : undefined;
   if (!d) throw new ToolError(`機種が見つかりません: ${slug ?? "(slug未指定)"}`);
   return d;
 }
 
-export function callTool(name: string, args: Json = {}): unknown {
+/** devices：公開中のカタログ（route では DB から、テストでは固定データを渡す） */
+export function callTool(name: string, args: Json = {}, devices: Device[] = []): unknown {
   switch (name) {
     case "search_devices":
-      return { results: searchDevices({
+      return { results: searchDevices(devices, {
         query: str(args.query),
+        category: str(args.category),
         brand: str(args.brand),
-        os: str(args.os) as Os | undefined,
+        os: str(args.os),
         use: str(args.use) as Use | undefined,
         maxMonthlyRent: num(args.maxMonthlyRent),
         minMemoryGb: num(args.minMemoryGb),
       }).map((d) => ({ ...d, url: SITE_URL + d.url })) };
     case "get_device": {
-      const d = requireDevice(args);
+      const d = requireDevice(devices, args);
       return {
         slug: d.slug,
+        category: d.categoryId,
         brand: d.brand,
         name: d.name,
-        chip: d.chip,
-        os: d.os,
-        screenInch: d.screenInch,
-        weightKg: d.weightKg,
+        subtitle: d.subtitle,
+        os: specValue(d, "os") ?? null,
         releaseDate: d.releaseDate,
-        configs: d.configs.map(({ id, label, memoryGb, storageGb, officialPrice }) => ({ id, label, memoryGb, storageGb, officialPrice })),
+        specs: d.specs.map(({ key, label, value, unit, display, plain }) => ({ key, label, value, unit, display, plain })),
+        configs: d.configs.map(({ id, label, attrs, officialPrice }) => ({ id, label, attrs, officialPrice })),
         verified: d.verified,
         content: d.content ?? null,
         sources: d.sources,
@@ -116,7 +119,7 @@ export function callTool(name: string, args: Json = {}): unknown {
       };
     }
     case "compare_rental_offers": {
-      const d = requireDevice(args);
+      const d = requireDevice(devices, args);
       const cfg = findConfig(d, str(args.configId));
       return {
         device: d.name,
@@ -129,20 +132,20 @@ export function callTool(name: string, args: Json = {}): unknown {
       };
     }
     case "compare_purchase_prices": {
-      const d = requireDevice(args);
+      const d = requireDevice(devices, args);
       const cfg = findConfig(d, str(args.configId));
       const offers = shopOffers(d, cfg.id);
       return { device: d.name, config: cfg.label, offers, note: offers.length ? "公式以外の価格・ポイントはサンプルです。" : "購入価格は準備中です。" };
     }
     case "rent_or_buy": {
-      const d = requireDevice(args);
+      const d = requireDevice(devices, args);
       const cfg = findConfig(d, str(args.configId));
       const r = rentOrBuy(d, cfg.id, asTerm(args.term));
       if (!r) throw new ToolError("この構成は購入価格またはレンタル見積がまだありません。");
       return { device: d.name, config: cfg.label, ...r, note: "残価率・価格はサンプル仮定による試算です。" };
     }
     case "get_quote": {
-      const d = requireDevice(args);
+      const d = requireDevice(devices, args);
       const q = quote(d, {
         configId: str(args.configId),
         grade: asGrade(args.grade),
@@ -166,7 +169,7 @@ class RpcError extends Error {
 }
 
 /** 1件の JSON-RPC メッセージを処理。通知（idなし）の場合は null を返す。 */
-export function handleMcpMessage(msg: RpcRequest): Json | null {
+export function handleMcpMessage(msg: RpcRequest, devices: Device[] = []): Json | null {
   const id = msg.id ?? null;
   const isNotification = msg.id === undefined;
   try {
@@ -192,7 +195,7 @@ export function handleMcpMessage(msg: RpcRequest): Json | null {
         const name = str(msg.params?.name);
         if (!name) throw new RpcError(-32602, "params.name is required");
         try {
-          const data = callTool(name, (msg.params?.arguments as Json) ?? {});
+          const data = callTool(name, (msg.params?.arguments as Json) ?? {}, devices);
           result = { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], structuredContent: data, isError: false };
         } catch (e) {
           if (e instanceof ToolError) {

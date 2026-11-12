@@ -10,11 +10,12 @@ export function deviceJsonLd(device: Device) {
     {
       "@type": "Product",
       "@id": `${url}#product`,
-      name: `${device.name}（${device.chip}）`,
+      name: device.subtitle ? `${device.name}（${device.subtitle}）` : device.name,
       brand: { "@type": "Brand", name: device.brand },
-      category: "ノートパソコン",
+      category: device.categoryName,
       url,
       ...(device.content ? { description: device.content.summary } : {}),
+      ...(device.images[0] ? { image: device.images.map((i) => i.src) } : {}),
       ...(prices.length
         ? {
             offers: {
@@ -31,7 +32,7 @@ export function deviceJsonLd(device: Device) {
       "@type": "BreadcrumbList",
       itemListElement: [
         { "@type": "ListItem", position: 1, name: SITE_NAME, item: SITE_URL },
-        { "@type": "ListItem", position: 2, name: "ノートPC", item: `${SITE_URL}/` },
+        { "@type": "ListItem", position: 2, name: device.categoryName, item: `${SITE_URL}/` },
         { "@type": "ListItem", position: 3, name: device.name, item: url },
       ],
     },

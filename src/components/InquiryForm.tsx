@@ -21,9 +21,10 @@ function months(): { value: string; label: string }[] {
   });
 }
 
-export function InquiryForm({ quote }: { quote: Quote }) {
+/** prefill：ログイン中の会員の会社情報（未ログインなら空） */
+export function InquiryForm({ quote, prefill = {} }: { quote: Quote; prefill?: Record<string, string> }) {
   const [state, action, pending] = useActionState<FormState, FormData>(submitInquiryAction, { ok: false, errors: {} });
-  const v = state.values ?? {};
+  const v = state.values ?? prefill;
   const e = state.errors;
 
   return (

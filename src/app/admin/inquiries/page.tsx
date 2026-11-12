@@ -2,7 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { SUPPLIERS, TEMPLATES } from "@/data/master";
-import { getDevice } from "@/lib/catalog";
+import { getDevices } from "@/lib/catalog-server";
 import { getSql } from "@/lib/db";
 import { yen } from "@/lib/format";
 import { findConfig } from "@/lib/pricing";
@@ -31,6 +31,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/inquirie
   const sql = getSql();
   if (!sql) return <NoDb />;
   const rows = await repo.listInquiries(sql, status);
+  const devices = await getDevices();
 
   return (
     <>
@@ -47,7 +48,7 @@ async function List({ searchParams }: { searchParams: PageProps<"/admin/inquirie
       </nav>
       {!rows.length && <p className="m-0 text-sm text-sub">該当する問い合わせはありません。</p>}
       {rows.map((q) => {
-        const device = getDevice(q.deviceSlug);
+        const device = devices.find((d) => d.slug === q.deviceSlug);
         const supplier = SUPPLIERS.find((s) => s.id === q.supplierId);
         return (
           <details key={q.id} className="card p-5" open={q.status === "new"}>

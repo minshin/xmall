@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isAdminAuthorized } from "../src/lib/admin-auth";
+import { hasRole } from "../src/lib/repo-accounts";
 import { contactSchema, firstErrors, quoteSchema, reviewSchema } from "../src/lib/validation";
 
 test("口コミ：本文30文字未満・未知の機種・評価なしはエラー", () => {
-  const r = reviewSchema.safeParse({ deviceSlug: "nope", rating: "", author: "a", use: "", acquisition: "", via: "", body: "短い" });
+  const r = reviewSchema.safeParse({ deviceSlug: "NOPE!", rating: "", author: "a", use: "", acquisition: "", via: "", body: "短い" });
   assert.equal(r.success, false);
   const e = firstErrors(r.error!);
   assert.ok(e.deviceSlug && e.rating && e.author && e.use && e.acquisition && e.body);
@@ -27,15 +27,10 @@ test("連絡先：同意必須・メール形式・空欄は null", () => {
   assert.deepEqual(Object.keys(e).sort(), ["agree", "company", "contactName", "email", "phone", "prefecture", "startMonth"]);
 });
 
-test("管理画面の認証：未設定なら常に拒否、正しい資格情報のみ許可", () => {
-  delete process.env.ADMIN_USER;
-  delete process.env.ADMIN_PASSWORD;
-  const basic = (u: string, p: string) => "Basic " + btoa(`${u}:${p}`);
-  assert.equal(isAdminAuthorized(basic("admin", "x")), false);
-  process.env.ADMIN_USER = "admin";
-  process.env.ADMIN_PASSWORD = "s3cret:pw";
-  assert.equal(isAdminAuthorized(basic("admin", "s3cret:pw")), true);
-  assert.equal(isAdminAuthorized(basic("admin", "s3cret")), false);
-  assert.equal(isAdminAuthorized(null), false);
-  assert.equal(isAdminAuthorized("Basic !!!"), false);
+test("権限：editor はカタログ・審査、admin はさらに会員管理。未ログインは不可", () => {
+  assert.equal(hasRole(null, "user"), false);
+  assert.equal(hasRole({ role: "user" }, "editor"), false);
+  assert.equal(hasRole({ role: "editor" }, "editor"), true);
+  assert.equal(hasRole({ role: "editor" }, "admin"), false);
+  assert.equal(hasRole({ role: "admin" }, "editor"), true);
 });

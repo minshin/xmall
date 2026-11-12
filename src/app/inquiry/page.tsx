@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { InquiryForm } from "@/components/InquiryForm";
 import { GRADES, SUPPLIERS, TEMPLATES } from "@/data/master";
-import { getDevice } from "@/lib/catalog";
+import { currentProfile } from "@/lib/auth";
+import { getDevice } from "@/lib/catalog-server";
 import { yen } from "@/lib/format";
 import { findConfig, quote } from "@/lib/pricing";
 import type { GradeCode, TemplateCode, Term } from "@/lib/types";
@@ -50,7 +51,8 @@ async function InquiryBody({ searchParams }: { searchParams: PageProps<"/inquiry
 
   if (!parsed.success) return <Invalid />;
   const q = parsed.data;
-  const device = getDevice(q.deviceSlug)!;
+  const device = await getDevice(q.deviceSlug);
+  if (!device) return <Invalid />;
   const priced = quote(device, {
     configId: q.configId,
     grade: q.grade as GradeCode,
@@ -61,6 +63,12 @@ async function InquiryBody({ searchParams }: { searchParams: PageProps<"/inquiry
   });
   if (!priced) return <Invalid />;
   const supplier = SUPPLIERS.find((s) => s.id === priced.supplierId)!;
+  const me = await currentProfile();
+  const prefill: Record<string, string> = me
+    ? Object.fromEntries(
+        Object.entries({ company: me.companyName, contactName: me.fullName, email: me.email, phone: me.phone }).filter((e): e is [string, string] => !!e[1]),
+      )
+    : {};
   const cfg = findConfig(device, q.configId);
 
   return (
@@ -69,7 +77,7 @@ async function InquiryBody({ searchParams }: { searchParams: PageProps<"/inquiry
         <h2 id="form-h" className="m-0 mb-4 text-[18px] font-bold">
           連絡先
         </h2>
-        <InquiryForm quote={{ ...q, term: q.term as Term }} />
+        <InquiryForm quote={{ ...q, term: q.term as Term }} prefill={prefill} />
       </section>
 
       <aside aria-label="見積内容" className="card p-6 flex-[1_1_280px] flex flex-col gap-3 text-sm">

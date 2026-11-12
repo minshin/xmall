@@ -3,6 +3,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { after, before, describe, test } from "node:test";
 import postgres from "postgres";
 import * as repo from "../src/lib/repo";
+import * as accounts from "../src/lib/repo-accounts";
+import * as admin from "../src/lib/repo-admin";
+import * as cat from "../src/lib/repo-catalog";
 import { contactSchema, quoteSchema, reviewSchema } from "../src/lib/validation";
 
 /**
@@ -21,6 +24,12 @@ describe("repo（Postgres）", { skip }, () => {
 
   before(async () => {
     await sql.unsafe("drop schema if exists public cascade; create schema public;");
+    // Supabase の auth / storage スキーマの最小スタブ（素の Postgres でも migration を流せるように）
+    await sql.unsafe(`
+      drop schema if exists auth cascade; create schema auth;
+      create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb default '{}', raw_app_meta_data jsonb default '{}', email_confirmed_at timestamptz);
+      create schema if not exists storage;
+      create table if not exists storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);`);
     for (const f of readdirSync("supabase/migrations").sort()) await sql.unsafe(readFileSync(`supabase/migrations/${f}`, "utf8"));
   });
   after(() => sql.end());
@@ -99,5 +108,81 @@ describe("repo（Postgres）", { skip }, () => {
     const counts = await repo.adminCounts(sql);
     assert.equal(counts.inquiries_30d, 1);
     assert.equal(counts.new_inquiries, 0);
+  });
+
+  test("レンタル掲載：upsert で重複せず、消えた商品は掲載終了になる", async () => {
+    const company = { id: "acme", name: "ACME", operator: null, url: "https://example.com/", audience: "business" as const, note: null };
+    const listing = (externalId: string, priceYen: number) => ({
+      companyId: "acme", externalId, url: `https://example.com/${externalId}`, title: `MacBook Pro 14 M5 ${externalId}`,
+      maker: "Apple", model: null, cpu: "M5", memoryGb: 16, storageGb: 512, os: "macOS", condition: null, officeIncluded: false,
+      inStock: null, priceTax: "incl" as const, terms: null, deviceSlug: slug, configId: "16-512", fetchedAt: "2026-11-12",
+      prices: [{ termUnit: "month" as const, termValue: 1, priceYen, basis: "per_month" as const, label: "1ヶ月" }],
+    });
+    await repo.importRentalData(sql, { companies: [company], listings: [listing("a", 15000), listing("b", 9000)] });
+    assert.deepEqual((await repo.rentalListings(sql, { deviceSlug: slug })).map((l) => [l.externalId, l.prices[0].priceYen]), [["b", 9000], ["a", 15000]]);
+
+    const r = await repo.importRentalData(sql, { companies: [company], listings: [listing("a", 14000)] });
+    assert.equal(r.deactivated, 1);
+    const now = await repo.rentalListings(sql, { deviceSlug: slug });
+    assert.deepEqual(now.map((l) => [l.externalId, l.prices[0].priceYen, l.companyName]), [["a", 14000, "ACME"]]);
+  });
+
+  test("閲覧者数は訪問者ごとに1回だけ数え、集計ビューに出る", async () => {
+    assert.equal(await repo.recordView(sql, slug, A), 1);
+    assert.equal(await repo.recordView(sql, slug, A), 1);
+    assert.equal(await repo.recordView(sql, slug, B), 2);
+    assert.equal((await repo.deviceStats(sql))[slug].views, 2);
+  });
+
+  test("サインアップで profiles ができ、ログイン中の行動は会員に紐づく", async () => {
+    const uid = "33333333-3333-4333-8333-333333333333";
+    await sql`insert into auth.users (id, email, raw_user_meta_data) values (${uid}, 'buyer@example.co.jp', '{"full_name":"山田"}')`;
+    const p = await accounts.getProfile(sql, uid);
+    assert.equal(p?.email, "buyer@example.co.jp");
+    assert.equal(p?.role, "user");
+    assert.equal(p?.fullName, "山田");
+    await accounts.updateProfile(sql, uid, { fullName: "山田 太郎", companyName: "株式会社テスト", department: null, phone: null, companySize: "10-49" });
+    const C = "44444444-4444-4444-8444-444444444444";
+    await repo.recordView(sql, slug, C, uid);
+    await repo.recordView(sql, slug, C, uid);
+    await repo.toggleLike(sql, slug, C, uid);
+    const act = await accounts.userActivity(sql, uid);
+    assert.deepEqual(act.views.map((v) => [v.deviceSlug, v.viewCount]), [[slug, 2]]);
+    assert.equal(act.likes.length, 1);
+    const { users } = await accounts.listUsers(sql, { q: "テスト" });
+    assert.equal(users[0].companyName, "株式会社テスト");
+    assert.equal(users[0].views, 1);
+    assert.equal(await accounts.setRole(sql, uid, "editor"), true);
+    assert.equal(accounts.hasRole(await accounts.getProfile(sql, uid), "editor"), true);
+  });
+
+  test("カタログ：品目のスペック項目で製品を作り、公開したものだけ読める", async () => {
+    await sql`insert into public.sites (id, name, kind) values ('acme-maker', 'ACME', 'maker')`;
+    const uid = "33333333-3333-4333-8333-333333333333";
+    const id = await admin.createProduct(sql, { slug: "acme-24", categoryId: "monitor", brandId: "acme-maker", name: "ACME 24" }, uid);
+    assert.equal((await cat.loadProducts(sql)).some((d) => d.slug === "acme-24"), false, "下書きは公開側に出ない");
+    const attrs = (await cat.loadCategories(sql)).find((c) => c.id === "monitor")!.attributes;
+    const size = attrs.find((a) => a.key === "size_inch")!;
+    const res = attrs.find((a) => a.key === "resolution")!;
+    await admin.saveSpecs(sql, id, [
+      { attributeId: size.id, value: 23.8, display: null, plain: "机に置いてちょうどいい大きさ" },
+      { attributeId: res.id, value: "フルHD", display: null, plain: null },
+    ], uid);
+    await admin.saveVariants(sql, id, [{ code: "std", label: "標準", attrs: {}, officialPrice: 19800, rentBase: 900, note: null }], uid);
+    await admin.updateProductBase(sql, id, {
+      slug: "acme-24", categoryId: "monitor", brandId: "acme-maker", name: "ACME 24", subtitle: "24型", releaseDate: null,
+      status: "published", verified: false, bodyColor: "#333333", uses: ["office"], supplierIds: ["bayside"],
+    }, uid);
+    const [d] = await cat.loadProducts(sql, { slug: "acme-24" });
+    assert.equal(d.categoryName, "モニター");
+    assert.equal(d.brand, "ACME");
+    assert.deepEqual(d.specs.map((x) => [x.key, x.display]), [["size_inch", "23.8インチ"], ["resolution", "フルHD"]]);
+    assert.equal(d.specs[0].highlight, true);
+    assert.equal(d.configs[0].rentBase, 900);
+    await assert.rejects(() => admin.saveVariants(sql, id, [
+      { code: "a", label: "A", attrs: {}, officialPrice: null, rentBase: 1, note: null },
+      { code: "a", label: "B", attrs: {}, officialPrice: null, rentBase: 1, note: null },
+    ], uid), "構成コードの重複は DB でも弾く");
+    assert.equal(await admin.deleteSite(sql, "acme-maker"), false, "製品が使っているメーカーは消せない");
   });
 });

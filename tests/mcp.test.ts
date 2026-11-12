@@ -2,9 +2,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { handleMcpMessage, TOOLS } from "../src/lib/mcp";
+import { SEED_CATALOG } from "../src/lib/seed";
 
 const call = (method: string, params?: Record<string, unknown>, id: number | undefined = 1) =>
-  handleMcpMessage({ jsonrpc: "2.0", id, method, params }) as { result?: any; error?: { code: number } };
+  handleMcpMessage({ jsonrpc: "2.0", id, method, params }, SEED_CATALOG) as { result?: any; error?: { code: number } };
 
 test("initialize はプロトコルバージョンと tools capability を返す", () => {
   const r = call("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } });

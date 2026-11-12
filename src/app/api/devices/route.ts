@@ -1,6 +1,7 @@
-import { allDevices, summarize } from "@/lib/catalog";
+import { summarize } from "@/lib/catalog";
+import { getDevices } from "@/lib/catalog-server";
 
-/** 機種一覧（要約）。ビルド時に静的生成される。 */
+/** 機種一覧（要約） */
 export async function GET() {
-  return Response.json({ devices: allDevices().map(summarize) });
+  return Response.json({ devices: (await getDevices()).map((d) => summarize(d)) });
 }
