@@ -1,11 +1,11 @@
 import { Star } from "lucide-react";
 import { getReviews, getStats, viewerState } from "@/lib/community";
-import { LikeButton, ReviewList } from "./Social";
+import { LikeButton, ReviewList, type LikeVariant } from "./Social";
 
 /** 機種ページのお気に入り（Cookie を読むので Suspense の中で使う） */
-export async function DeviceLike({ slug }: { slug: string }) {
+export async function DeviceLike({ slug, variant }: { slug: string; variant?: LikeVariant }) {
   const [stats, viewer] = await Promise.all([getStats(slug), viewerState(slug)]);
-  return <LikeButton slug={slug} likes={stats.likes} liked={viewer.liked} />;
+  return <LikeButton slug={slug} likes={stats.likes} liked={viewer.liked} variant={variant} />;
 }
 
 /** 評価の要約（キャッシュのみ。静的シェルに含まれる） */

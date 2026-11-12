@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Eye, Heart, Star, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { DeviceSummary } from "@/lib/catalog";
 import type { DeviceStats } from "@/lib/types";
@@ -17,23 +18,36 @@ export interface FacetDef {
 
 const NO_STATS: DeviceStats = { likes: 0, reviewCount: 0, rating: null, views: 0 };
 
-export function CatalogBrowser({
-  devices,
-  stats,
-  facetDefs,
-  categories,
-}: {
+type Props = {
   devices: DeviceSummary[];
   stats: Record<string, DeviceStats>;
   facetDefs: FacetDef[];
   categories: { id: string; name: string; icon: string | null }[];
-}) {
+};
+
+/** URL の ?q=（ヘッダーの検索）と ?brand=（メーカーの製品一覧）を初期条件にする。Suspense の中で使う */
+export function CatalogBrowserWithParams(props: Props) {
+  const sp = useSearchParams();
+  const q = sp.get("q")?.trim() ?? "";
+  const brand = sp.get("brand") ?? "";
+  return <CatalogBrowser key={`${q}|${brand}`} {...props} query={q} initialBrand={brand} />;
+}
+
+export function CatalogBrowser({ devices, stats, facetDefs, categories, query = "", initialBrand = "" }: Props & { query?: string; initialBrand?: string }) {
   const st = (slug: string) => stats[slug] ?? NO_STATS;
   const [cat, setCat] = useState(categories[0]?.id ?? "");
-  const [sel, setSel] = useState<Record<string, string[]>>({});
+  const [sel, setSel] = useState<Record<string, string[]>>(initialBrand ? { brand: [initialBrand] } : {});
   const [sort, setSort] = useState<Sort>("price");
+  const q = query.toLowerCase();
 
-  const inCat = useMemo(() => devices.filter((d) => !cat || d.categoryId === cat), [devices, cat]);
+  // 検索語があるときは品目をまたいで探す
+  const inCat = useMemo(
+    () =>
+      devices.filter((d) =>
+        q ? `${d.brand} ${d.name} ${d.subtitle} ${d.categoryName}`.toLowerCase().includes(q) : !cat || d.categoryId === cat,
+      ),
+    [devices, cat, q],
+  );
 
   const options = useMemo(
     () =>
@@ -69,9 +83,18 @@ export function CatalogBrowser({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="m-0 text-[32px] sm:text-[40px] font-semibold leading-tight">
-          {catName}
-          <span className="text-faint">。</span>
-          <span className="block text-[17px] sm:text-[21px] font-medium text-mute mt-1">借りるか、買うか。まとめて比べる。</span>
+          {q ? (
+            <>
+              「{query}」の検索結果
+              <span className="block text-[17px] sm:text-[21px] font-medium text-mute mt-1">{list.length}件</span>
+            </>
+          ) : (
+            <>
+              {catName}
+              <span className="text-faint">。</span>
+              <span className="block text-[17px] sm:text-[21px] font-medium text-mute mt-1">借りるか、買うか。まとめて比べる。</span>
+            </>
+          )}
         </h1>
         <div role="tablist" aria-label="並び順" className="flex bg-hair rounded-full p-0.5 text-[13px]">
           {(
@@ -94,7 +117,7 @@ export function CatalogBrowser({
         </div>
       </div>
 
-      {categories.length > 1 && (
+      {categories.length > 1 && !q && (
         <nav aria-label="品目" className="flex gap-6 overflow-x-auto snap-x-strip -mx-4 px-4 sm:mx-0 sm:px-0">
           {categories.map((c) => (
             <button

@@ -39,7 +39,9 @@ export function ViewCount({ slug, views }: { slug: string; views: number }) {
 
 // ───────── いいね ─────────
 
-export function LikeButton({ slug, likes, liked }: { slug: string; likes: number; liked: boolean }) {
+export type LikeVariant = "inline" | "icon" | "button";
+
+export function LikeButton({ slug, likes, liked, variant = "inline" }: { slug: string; likes: number; liked: boolean; variant?: LikeVariant }) {
   const [state, setState] = useState({ likes, liked });
   const [optimistic, setOptimistic] = useOptimistic(state);
   const [, start] = useTransition();
@@ -53,30 +55,60 @@ export function LikeButton({ slug, likes, liked }: { slug: string; likes: number
       setFailed(!r);
     });
 
+  const heart = (
+    <Heart
+      key={String(optimistic.liked)}
+      size={variant === "button" ? 16 : 17}
+      strokeWidth={1.8}
+      fill={optimistic.liked ? "currentColor" : "none"}
+      className={optimistic.liked ? "animate-pop" : ""}
+      aria-hidden="true"
+    />
+  );
+  const common = {
+    type: "button" as const,
+    "aria-pressed": optimistic.liked,
+    "aria-label": optimistic.liked ? "お気に入りを外す" : "お気に入りに追加",
+    title: failed ? "保存できませんでした" : "お気に入り",
+    onClick,
+  };
+
+  if (variant === "button")
+    return (
+      <button
+        {...common}
+        className={`w-full inline-flex items-center justify-center gap-2 rounded-[12px] border py-2.5 text-sm cursor-pointer transition-colors ${
+          optimistic.liked ? "border-heart/40 bg-[#fff0f3] text-heart" : "border-line bg-white text-ink hover:bg-ground"
+        }`}
+      >
+        {heart}
+        {optimistic.liked ? "お気に入りに保存済み" : "お気に入りに保存"}
+      </button>
+    );
+  if (variant === "icon")
+    return (
+      <button {...common} className={`size-full flex items-center justify-center cursor-pointer ${optimistic.liked ? "text-heart" : "text-ink"}`}>
+        {heart}
+      </button>
+    );
   return (
-    <button
-      type="button"
-      aria-pressed={optimistic.liked}
-      aria-label={optimistic.liked ? "お気に入りを外す" : "お気に入りに追加"}
-      title={failed ? "保存できませんでした" : "お気に入り"}
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 cursor-pointer transition-colors ${optimistic.liked ? "text-heart" : "text-mute hover:text-heart"}`}
-    >
-      <Heart
-        key={String(optimistic.liked)}
-        size={17}
-        strokeWidth={1.8}
-        fill={optimistic.liked ? "currentColor" : "none"}
-        className={optimistic.liked ? "animate-pop" : ""}
-        aria-hidden="true"
-      />
+    <button {...common} className={`inline-flex items-center gap-1.5 cursor-pointer transition-colors ${optimistic.liked ? "text-heart" : "text-mute hover:text-heart"}`}>
+      {heart}
       {optimistic.likes > 0 && <span className="tabular-nums">{n(optimistic.likes)}</span>}
     </button>
   );
 }
 
 /** Suspense の fallback 用（押せない表示だけ） */
-export function LikeButtonPlaceholder({ likes }: { likes: number }) {
+export function LikeButtonPlaceholder({ likes, variant = "inline" }: { likes: number; variant?: LikeVariant }) {
+  if (variant === "button")
+    return (
+      <span className="w-full inline-flex items-center justify-center gap-2 rounded-[12px] border border-line py-2.5 text-sm text-faint">
+        <Heart size={16} strokeWidth={1.8} aria-hidden="true" />
+        お気に入りに保存
+      </span>
+    );
+  if (variant === "icon") return <Heart size={17} strokeWidth={1.8} className="text-faint" aria-hidden="true" />;
   return (
     <span className="inline-flex items-center gap-1.5 text-mute">
       <Heart size={17} strokeWidth={1.8} aria-hidden="true" />
@@ -127,7 +159,7 @@ export function ReviewList({ reviews, helped }: { reviews: Review[]; helped: str
   const uses = [...new Set(reviews.map((r) => r.use))];
   const list = reviews.filter((r) => filter === "all" || r.use === filter);
   const pill = (on: boolean) =>
-    `rounded-full px-3.5 py-1.5 text-xs cursor-pointer transition-colors ${on ? "bg-ink text-white" : "bg-white text-sub hover:bg-hair"}`;
+    `rounded-full px-3.5 py-1.5 text-xs cursor-pointer transition-colors ${on ? "bg-ink text-white" : "bg-white border border-line text-sub hover:bg-ground"}`;
 
   if (!reviews.length) return <p className="m-0 text-sm text-mute">まだ口コミはありません。</p>;
 
@@ -147,7 +179,7 @@ export function ReviewList({ reviews, helped }: { reviews: Review[]; helped: str
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {list.map((r, k) => (
-          <article key={r.id} className="bg-white rounded-[18px] p-5 flex flex-col gap-2.5 animate-rise" style={{ animationDelay: `${k * 40}ms` }}>
+          <article key={r.id} className="bg-white border border-hair rounded-[14px] p-5 flex flex-col gap-2.5 animate-rise" style={{ animationDelay: `${k * 40}ms` }}>
             <div className="flex items-center justify-between gap-2">
               <Stars value={r.rating} />
               <span className="flex gap-1">
@@ -194,7 +226,7 @@ export function ReviewForm({ slug, deviceName }: { slug: string; deviceName: str
     );
 
   return (
-    <form action={action} className="flex flex-col gap-4 bg-white rounded-[20px] p-6 animate-rise" noValidate>
+    <form action={action} className="flex flex-col gap-4 bg-ground rounded-[16px] p-6 animate-rise" noValidate>
       <p className="m-0 font-bold">{deviceName}の口コミを書く</p>
       <input type="hidden" name="deviceSlug" value={slug} />
       <div aria-hidden="true" className="hidden">

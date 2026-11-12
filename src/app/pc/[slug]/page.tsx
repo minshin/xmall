@@ -2,19 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { Check, ChevronDown, CircleDot, Clapperboard, Code2, Palette, Presentation, X, type LucideIcon } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronRight, CircleDot, Clapperboard, Code2, Palette, Presentation, X, type LucideIcon } from "lucide-react";
 import { DeviceLike, DeviceReviews, RatingSummary } from "@/components/Community";
 import { Gallery } from "@/components/Gallery";
 import { Icon } from "@/components/icons";
-import { PriceSection, type ListedOffer } from "@/components/PriceSection";
+import { ProductPurchase, type ListedOffer } from "@/components/ProductPurchase";
 import { LikeButtonPlaceholder, ReviewForm, ViewCount } from "@/components/Social";
 import { DeviceThumb } from "@/components/ui";
+import { GRADE_CODES, GRADES, TEMPLATE_CODES, TEMPLATES } from "@/data/master";
 import { displaySpecs, summarize } from "@/lib/catalog";
 import { getDevice, getDevices, getFavicons, getVariantAttrs } from "@/lib/catalog-server";
 import { getRentalListings, getStats } from "@/lib/community";
 import { yen } from "@/lib/format";
 import { deviceJsonLd } from "@/lib/jsonld";
-import type { RentalListing } from "@/lib/types";
+import type { Device, RentalListing } from "@/lib/types";
 
 export async function generateStaticParams() {
   return (await getDevices()).map((d) => ({ slug: d.slug }));
@@ -56,7 +57,9 @@ function toListed(listings: RentalListing[]): ListedOffer[] {
       companyName: l.companyName,
       spec,
       monthly: p.priceYen,
-      note: `${p.label.replace(/^月額制/, "").replace(/^[（(]|[）)]$/g, "")}${l.priceTax === "incl" ? "・税込" : l.priceTax === "excl" ? "・税抜" : ""}`.replace(/^・/, ""),
+      note: [spec, p.label.replace(/^月額制/, "").replace(/^[（(]|[）)]$/g, ""), l.priceTax === "incl" ? "税込" : l.priceTax === "excl" ? "税抜" : "", l.inStock === false ? "在庫なし" : ""]
+        .filter(Boolean)
+        .join("・"),
       url: l.url,
       inStock: l.inStock,
     };
@@ -67,34 +70,37 @@ function toListed(listings: RentalListing[]): ListedOffer[] {
   return [...best.values()].sort((a, b) => a.monthly - b.monthly);
 }
 
-/**
- * 見出しを 1 行に収める文字サイズ。文字の幅（em）を見積もり、画面幅（vw）に合わせて縮める。
- * 和文・全角は 1em、英数字は約 0.58em、空白は約 0.28em。最小 24px を下回るほど長い名前は折り返しを許す。
- */
-function fitTitle(text: string, maxPx: number): { fontSize: string; nowrap: boolean } {
-  let ems = 0;
-  for (const ch of text) ems += /\s/.test(ch) ? 0.28 : /[\u0000-\u024f]/.test(ch) ? 0.58 : 1;
-  const vw = 88 / Math.max(ems, 1); // 左右の余白を除いた幅 ≒ 88vw
-  return { fontSize: `min(${maxPx}px, ${vw.toFixed(2)}vw)`, nowrap: (390 * vw) / 100 >= 24 };
-}
-
-/** 通しの帯（カードではなく、背景色の切り替えで区切る） */
-function Band({ id, tone = "white", children, labelledBy }: { id?: string; tone?: "white" | "gray"; children: React.ReactNode; labelledBy?: string }) {
+function Section({ id, title, children, aside }: { id: string; title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <section id={id} aria-labelledby={labelledBy} className={`${tone === "white" ? "bg-white" : "bg-ground"} scroll-mt-24`}>
-      <div className="mx-auto max-w-[1080px] px-4 sm:px-6 py-16 sm:py-24">{children}</div>
+    <section id={id} aria-labelledby={`${id}-h`} className="scroll-mt-28 flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-ink pb-3">
+        <h2 id={`${id}-h`} className="m-0 text-[22px] font-semibold">
+          {title}
+        </h2>
+        {aside}
+      </div>
+      {children}
     </section>
   );
 }
 
-function SectionTitle({ id, eyebrow, children }: { id: string; eyebrow?: string; children: React.ReactNode }) {
+function RelatedCard({ d, rent, note }: { d: Device; rent?: number; note?: string }) {
   return (
-    <div className="mb-10 sm:mb-14">
-      {eyebrow && <p className="m-0 mb-2 text-[17px] font-semibold text-mute">{eyebrow}</p>}
-      <h2 id={id} className="m-0 text-[32px] sm:text-[48px] font-semibold leading-[1.1]">
-        {children}
-      </h2>
-    </div>
+    <Link href={`/pc/${d.slug}`} className="group shrink-0 w-[200px] sm:w-auto text-ink hover:no-underline flex flex-col gap-2">
+      <div className="aspect-[4/3] rounded-[12px] border border-hair bg-white overflow-hidden">
+        <div className="size-full transition-transform duration-300 group-hover:scale-[1.03]">
+          <DeviceThumb device={d} sizes="240px" />
+        </div>
+      </div>
+      <p className="m-0 text-[13px] leading-snug line-clamp-2">
+        {d.brand} {d.name}
+        {d.subtitle ? `（${d.subtitle}）` : ""}
+      </p>
+      <div className="bg-ground rounded-[8px] px-2.5 py-1.5 text-xs">
+        月額 <b className="text-[15px] font-semibold tabular-nums">{rent ? yen(rent) : "—"}</b>〜
+      </div>
+      {note && <p className="m-0 text-[11px] text-mute leading-snug">{note}</p>}
+    </Link>
   );
 }
 
@@ -113,270 +119,293 @@ export default async function DevicePage({ params }: PageProps<"/pc/[slug]">) {
   const c = device.content;
   const specs = displaySpecs(device.specs);
   const listed = toListed(listings);
-  const related = (c?.related ?? []).flatMap((r) => {
+  const relatedFromContent = (c?.related ?? []).flatMap((r) => {
     const rd = all.find((x) => x.slug === r.slug);
-    return rd ? [{ r, rd, rs: summarize(rd) }] : [];
+    return rd ? [{ d: rd, note: r.diff }] : [];
   });
+  // 関連商品：解説で指定したもの → 同じ品目の他機種で補う（最大 6）
+  const related = [
+    ...relatedFromContent,
+    ...all
+      .filter((x) => x.categoryId === device.categoryId && x.slug !== device.slug && !relatedFromContent.some((r) => r.d.slug === x.slug))
+      .map((d) => ({ d, note: undefined as string | undefined })),
+  ].slice(0, 6);
   const released = device.releaseDate ? `${device.releaseDate.slice(0, 4)}年${Number(device.releaseDate.slice(5, 7))}月発売` : null;
-  const [lead, ...rest] = (c?.summary ?? "").split("。").filter(Boolean);
-  const title = fitTitle(device.name, 64);
 
-  const nav = [
-    ["price", "価格"],
-    ...(c ? [["overview", "概要"]] : []),
+  const tabs = [
+    ["purchase", "料金・プラン"],
+    ["included", "含まれるもの"],
+    ...(c ? [["overview", "商品説明"]] : []),
     ...(specs.length ? [["specs", "スペック"]] : []),
-    ...(c?.faqs.length ? [["faq", "FAQ"]] : []),
+    ...(c?.faqs.length ? [["faq", "よくある質問"]] : []),
     ["reviews", "口コミ"],
   ];
 
   return (
-    <main>
+    <main className="bg-white">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(deviceJsonLd(device)) }} />
 
-      {/* 製品サブナビ */}
-      <div className="sticky top-12 z-30 bg-[rgb(255_255_255/0.72)] backdrop-blur-xl backdrop-saturate-150 border-b border-black/5">
-        <div className="mx-auto max-w-[1080px] px-4 sm:px-6 h-11 flex items-center gap-5">
-          <p className="m-0 text-[15px] sm:text-[17px] font-semibold truncate">{device.name}</p>
-          <nav aria-label="このページ" className="hidden md:flex gap-6 text-[12px] ml-auto">
-            {nav.map(([id, label]) => (
-              <a key={id} href={`#${id}`} className="text-sub hover:text-ink hover:no-underline">
-                {label}
-              </a>
-            ))}
-          </nav>
-          <a href="#price" className="btn btn-primary !py-1 !px-3 !text-[12px] ml-auto md:ml-0 shrink-0">
-            価格を比べる
-          </a>
-        </div>
+      {/* ページ内タブ */}
+      <div className="sticky top-12 z-30 bg-[rgb(255_255_255/0.85)] backdrop-blur-xl border-b border-hair">
+        <nav aria-label="このページ" className="mx-auto max-w-[1240px] px-4 sm:px-6 h-11 flex items-center gap-6 overflow-x-auto snap-x-strip text-[13px]">
+          {tabs.map(([id, label]) => (
+            <a key={id} href={`#${id}`} className="shrink-0 text-sub hover:text-ink hover:no-underline">
+              {label}
+            </a>
+          ))}
+        </nav>
       </div>
 
-      {/* ヒーロー */}
-      <section className="bg-white">
-        <div className="mx-auto max-w-[1080px] px-4 sm:px-6 pt-12 sm:pt-16 pb-16 sm:pb-20 flex flex-col items-center text-center gap-10">
-          <div className="flex flex-col items-center gap-3 animate-rise">
-            <p className="m-0 text-[15px] text-mute">
-              <Link href="/" className="text-mute">
-                {device.categoryName}
-              </Link>
-              ・{device.brand}
-              {released ? `・${released}` : ""}
-            </p>
-            <h1
-              className={`m-0 font-semibold leading-[1.08] tracking-[-0.03em] ${title.nowrap ? "whitespace-nowrap" : "text-balance"}`}
-              style={{ fontSize: title.fontSize }}
-            >
-              {device.name}
-            </h1>
-            {device.subtitle && <p className="m-0 text-[24px] sm:text-[32px] font-semibold text-mute leading-tight">{device.subtitle}</p>}
-            <p className="m-0 mt-3 text-[17px] sm:text-[19px] flex flex-col sm:flex-row sm:items-baseline items-center gap-x-2 gap-y-0.5">
-              {s.rentFrom ? (
-                <span className="whitespace-nowrap">
-                  月額 <b className="font-semibold tabular-nums">{yen(s.rentFrom)}</b>〜で借りる
-                </span>
-              ) : null}
-              {s.rentFrom && s.buyFrom ? <span className="hidden sm:inline text-faint">／</span> : null}
-              {s.buyFrom ? (
-                <span className="whitespace-nowrap">
-                  <b className="font-semibold tabular-nums">{yen(s.buyFrom)}</b>〜で買う
-                </span>
-              ) : null}
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-5 mt-2">
-              <a href="#price" className="btn btn-primary">
-                価格を比べる
-              </a>
-              <a href="#reviews" className="text-[17px]">
-                口コミを見る ›
-              </a>
-            </div>
-            <div className="flex items-center gap-5 text-sm mt-1">
-              <RatingSummary slug={device.slug} />
-              <Suspense fallback={<LikeButtonPlaceholder likes={stats.likes} />}>
-                <DeviceLike slug={device.slug} />
-              </Suspense>
-              <ViewCount slug={device.slug} views={stats.views} />
-            </div>
-            {!device.verified && <p className="m-0 text-xs text-faint">仕様は確認中です。最新の仕様はメーカー公式でご確認ください。</p>}
-          </div>
+      <div className="mx-auto max-w-[1240px] px-4 sm:px-6 py-5 flex flex-col gap-12 sm:gap-16">
+        <div className="flex flex-col gap-4">
+          <nav aria-label="パンくず" className="text-xs text-mute flex flex-wrap items-center gap-1">
+            <Link href="/" className="text-mute">
+              トップ
+            </Link>
+            <ChevronRight size={12} aria-hidden="true" />
+            <Link href="/" className="text-mute">
+              {device.categoryName}
+            </Link>
+            <ChevronRight size={12} aria-hidden="true" />
+            <Link href={`/?brand=${encodeURIComponent(device.brand)}`} className="text-mute">
+              {device.brand}
+            </Link>
+            <ChevronRight size={12} aria-hidden="true" />
+            <span className="text-sub truncate max-w-[60vw]">{device.name}</span>
+          </nav>
 
-          <div className="w-full max-w-[980px]">
-            <Gallery device={device} />
-          </div>
+          {/* 上段：画像 ／ 商品情報・選択肢 ／ 申し込み */}
+          <div id="purchase" className="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] gap-8 scroll-mt-28">
+            <div className="flex flex-col gap-4 lg:sticky lg:top-[124px] lg:self-start">
+              <Gallery device={device} />
+              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                <span className="border border-line rounded-[6px] px-2 py-0.5 text-xs text-sub">メーカー</span>
+                <Link href={`/?brand=${encodeURIComponent(device.brand)}`}>{device.brand} の製品一覧</Link>
+                {released && <span className="text-mute ml-auto">{released}</span>}
+              </div>
+              {s.highlights.length > 0 && (
+                <ul className="m-0 p-0 list-none grid grid-cols-3 border border-hair rounded-[12px] divide-x divide-hair">
+                  {s.highlights.slice(0, 3).map((h) => (
+                    <li key={h.key} className="flex flex-col items-center gap-1 py-3 px-1 text-center">
+                      <Icon name={h.icon} size={20} strokeWidth={1.5} className="text-mute" />
+                      <b className="text-[15px] font-semibold tabular-nums">{h.text}</b>
+                      <span className="text-[11px] text-mute">{h.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-          {s.highlights.length > 0 && (
-            <ul className="m-0 p-0 list-none grid grid-cols-3 w-full max-w-[720px] divide-x divide-hair">
-              {s.highlights.slice(0, 3).map((h) => (
-                <li key={h.key} className="flex flex-col items-center gap-2 px-2">
-                  <Icon name={h.icon} size={28} strokeWidth={1.3} className="text-ink" />
-                  <b className="text-[19px] sm:text-[24px] font-semibold leading-none tabular-nums">{h.text}</b>
-                  <span className="text-xs text-mute">{h.label}</span>
-                </li>
+            <ProductPurchase
+              device={device}
+              listed={listed}
+              favicons={favicons}
+              meta={
+                <div className="flex flex-wrap items-center gap-4 text-[13px]">
+                  <RatingSummary slug={device.slug} />
+                  <ViewCount slug={device.slug} views={stats.views} />
+                  {!device.verified && <span className="text-xs text-warn">仕様は確認中です</span>}
+                </div>
+              }
+              likeSlot={
+                <Suspense fallback={<LikeButtonPlaceholder likes={stats.likes} variant="button" />}>
+                  <DeviceLike slug={device.slug} variant="button" />
+                </Suspense>
+              }
+              links={[
+                { href: `/?brand=${encodeURIComponent(device.brand)}`, label: `他の${device.brand}製品を探す` },
+                { href: "/", label: `他の${device.categoryName}を探す` },
+                { href: "/guide/grades", label: "品質グレードの基準を見る" },
+              ]}
+            />
+          </div>
+        </div>
+
+        {/* 必ずご確認ください */}
+        <section aria-label="ご確認ください" className="rounded-[12px] border border-[#f5c2c7] bg-[#fdf3f4] px-5 py-4 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
+          <p className="m-0 inline-flex items-center gap-2 font-semibold text-[15px]">
+            <AlertCircle size={18} className="text-[#d70015]" aria-hidden="true" />
+            必ずご確認ください
+          </p>
+          <ul className="m-0 pl-4 list-disc text-[13px] leading-relaxed text-sub">
+            <li>レンタルの審査・契約・配送・請求は各レンタル会社が行います。xmall はお見積りの取り次ぎ（無料）です。</li>
+            <li>
+              表示中のレンタル会社名・月額・在庫は<b className="text-[#d70015] font-semibold">サンプル</b>です。正式な金額は見積でご確認ください。
+            </li>
+            <li>「他社サイトの掲載価格」は各社の公開ページから取得した参考価格で、xmall の提携先ではありません。</li>
+          </ul>
+        </section>
+
+        {/* 含まれるもの */}
+        <Section id="included" title="レンタルに含まれるもの">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex flex-col gap-3">
+              <h3 className="m-0 text-[15px] font-semibold">品質グレード（xmall 基準）</h3>
+              <table className="w-full text-[13px] border-collapse">
+                <tbody>
+                  {GRADE_CODES.map((g) => (
+                    <tr key={g} className="border-t border-hair">
+                      <th className="text-left font-semibold py-2 pr-3 w-10 align-top">{g}</th>
+                      <td className="py-2 text-sub">
+                        {GRADES[g].label}・{GRADES[g].appearance}
+                        <span className="block text-xs text-mute">
+                          バッテリー {GRADES[g].batteryMin}・保証 {GRADES[g].warranty}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-col gap-3">
+              <h3 className="m-0 text-[15px] font-semibold">セットアップ（届いてすぐ使える）</h3>
+              <ul className="m-0 p-0 list-none flex flex-col">
+                {TEMPLATE_CODES.map((t) => (
+                  <li key={t} className="border-t border-hair py-2 text-[13px]">
+                    <b className="font-semibold">{TEMPLATES[t].label}</b>
+                    <span className="block text-xs text-mute">{TEMPLATES[t].items.join("・")}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex flex-col gap-3">
+              <h3 className="m-0 text-[15px] font-semibold">サービス</h3>
+              <ul className="m-0 p-0 list-none flex flex-col">
+                {[
+                  ["故障時の修理・交換", "通常使用による故障は各社が対応（対応速度は会社ごと）"],
+                  ["返却時のデータ消去", "端末ごとの消去証明書を発行"],
+                  ["MDM 登録・ディスク暗号化", "一般事務・デザイン・開発テンプレートに含まれます"],
+                  ["配送・回収", "送料は会社・地域により異なります（サンプル）"],
+                ].map(([k, v]) => (
+                  <li key={k} className="border-t border-hair py-2 text-[13px] flex gap-2">
+                    <Check size={15} className="text-ok shrink-0 mt-0.5" aria-hidden="true" />
+                    <span>
+                      <b className="font-semibold">{k}</b>
+                      <span className="block text-xs text-mute">{v}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </Section>
+
+        {related.length > 0 && (
+          <Section id="related" title="関連商品">
+            <div className="flex sm:grid sm:grid-cols-3 lg:grid-cols-6 gap-4 overflow-x-auto snap-x-strip -mx-4 px-4 sm:mx-0 sm:px-0 pb-1">
+              {related.map(({ d, note }) => (
+                <RelatedCard key={d.slug} d={d} rent={summarize(d).rentFrom} note={note} />
               ))}
-            </ul>
-          )}
-        </div>
-      </section>
-
-      {/* 価格 */}
-      <section id="price" aria-labelledby="price-h" className="bg-ground scroll-mt-24">
-        <div className="mx-auto max-w-[1080px] px-4 sm:px-6 py-16 sm:py-24">
-          <PriceSection device={device} listed={listed} favicons={favicons} />
-        </div>
-      </section>
-
-      {c && (
-        <Band id="overview" labelledBy="overview-h">
-          <p className="m-0 mb-3 text-[17px] font-semibold text-mute">ひとことで言うと</p>
-          <h2 id="overview-h" className="m-0 max-w-[860px] text-[26px] sm:text-[34px] font-semibold leading-[1.35]">
-            {lead}。
-          </h2>
-          {rest.length > 0 && <p className="m-0 mt-5 mb-16 max-w-[760px] text-[17px] sm:text-[19px] leading-relaxed text-sub">{rest.join("。")}。</p>}
-
-          <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 mb-16">
-            <div>
-              <h3 className="m-0 mb-4 text-[17px] font-semibold">こんな方に</h3>
-              <ul className="m-0 p-0 list-none flex flex-col gap-3">
-                {c.goodFor.map((x) => (
-                  <li key={x} className="flex gap-3 text-[17px] leading-snug">
-                    <Check size={20} strokeWidth={2.2} className="text-ok shrink-0 mt-0.5" aria-hidden="true" />
-                    {x}
-                  </li>
-                ))}
-              </ul>
             </div>
-            <div>
-              <h3 className="m-0 mb-4 text-[17px] font-semibold text-mute">向いていない方</h3>
-              <ul className="m-0 p-0 list-none flex flex-col gap-3">
-                {c.notFor.map((x) => (
-                  <li key={x} className="flex gap-3 text-[17px] leading-snug text-mute">
-                    <X size={20} strokeWidth={2.2} className="text-faint shrink-0 mt-0.5" aria-hidden="true" />
-                    {x}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          </Section>
+        )}
 
-          {c.scenes.length > 0 && (
-            <>
-              <h3 className="m-0 mb-6 text-[24px] font-semibold">使い方の例</h3>
-              <div className="grid grid-cols-1 gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+        {c && (
+          <Section id="overview" title="商品説明">
+            <p className="m-0 max-w-[880px] text-[17px] leading-relaxed">{c.summary}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-[12px] bg-ok-soft/60 px-5 py-4">
+                <h3 className="m-0 mb-2.5 text-[15px] font-semibold text-ok">こんな方におすすめ</h3>
+                <ul className="m-0 p-0 list-none flex flex-col gap-2">
+                  {c.goodFor.map((x) => (
+                    <li key={x} className="flex gap-2 text-sm">
+                      <Check size={16} className="text-ok shrink-0 mt-0.5" aria-hidden="true" />
+                      {x}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-[12px] bg-ground px-5 py-4">
+                <h3 className="m-0 mb-2.5 text-[15px] font-semibold text-sub">向いていない方</h3>
+                <ul className="m-0 p-0 list-none flex flex-col gap-2">
+                  {c.notFor.map((x) => (
+                    <li key={x} className="flex gap-2 text-sm text-sub">
+                      <X size={16} className="text-faint shrink-0 mt-0.5" aria-hidden="true" />
+                      {x}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            {c.scenes.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {c.scenes.map((x) => {
                   const SceneIcon = sceneIcon(x.title);
                   return (
-                    <div key={x.title} className="flex flex-col gap-2 border-t border-hair pt-5">
-                      <SceneIcon size={28} strokeWidth={1.3} className="text-ink" aria-hidden="true" />
-                      <p className="m-0 mt-1 text-[17px] font-semibold">{x.title}</p>
-                      <p className="m-0 text-[15px] text-sub leading-relaxed">{x.body}</p>
-                      <p className="m-0 mt-auto pt-1 text-[13px] text-mute">おすすめ：{x.recommend}</p>
+                    <div key={x.title} className="border border-hair rounded-[12px] p-4 flex flex-col gap-1.5">
+                      <SceneIcon size={22} strokeWidth={1.5} className="text-mute" aria-hidden="true" />
+                      <p className="m-0 text-[15px] font-semibold">{x.title}</p>
+                      <p className="m-0 text-[13px] text-sub leading-relaxed">{x.body}</p>
+                      <p className="m-0 mt-auto pt-1 text-xs text-link">おすすめ：{x.recommend}</p>
                     </div>
                   );
                 })}
               </div>
-            </>
-          )}
-        </Band>
-      )}
+            )}
+          </Section>
+        )}
 
-      {specs.length > 0 && (
-        <Band id="specs" tone="gray" labelledBy="specs-h">
-          <SectionTitle id="specs-h" eyebrow="スペック">
-            数字の意味まで、
-            <br className="sm:hidden" />
-            やさしく。
-          </SectionTitle>
-          <dl className="m-0 border-b border-line">
-            {specs.map((x) => (
-              <div key={x.key} className="grid grid-cols-1 sm:grid-cols-[220px_1fr] gap-x-8 gap-y-1.5 py-6 border-t border-line">
-                <dt className="text-[17px] font-semibold">{x.label}</dt>
-                <dd className="m-0">
-                  <p className="m-0 text-[17px]">{x.display}</p>
-                  {x.plain && <p className="m-0 mt-1.5 text-[15px] text-mute leading-relaxed max-w-[640px]">{x.plain}</p>}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {c?.choose.length ? (
-            <div className="mt-16">
-              <h3 className="m-0 mb-6 text-[24px] font-semibold">構成の選び方</h3>
-              <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
+        {specs.length > 0 && (
+          <Section id="specs" title="スペック" aside={<span className="text-xs text-mute">数値の下に「つまりどういうこと？」を添えています</span>}>
+            <table className="w-full border-collapse text-sm">
+              <tbody>
+                {specs.map((x) => (
+                  <tr key={x.key} className="border-b border-hair">
+                    <th className="bg-ground text-left font-semibold align-top px-4 py-3.5 w-[34%] sm:w-[220px]">
+                      <span className="inline-flex items-center gap-2">
+                        <Icon name={x.icon} size={16} className="text-mute shrink-0" />
+                        {x.label}
+                      </span>
+                    </th>
+                    <td className="px-4 py-3.5 align-top">
+                      {x.display}
+                      {x.plain && <span className="block mt-1 text-[13px] text-mute leading-relaxed">{x.plain}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {c?.choose.length ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {c.choose.map((x) => (
-                  <div key={x.title}>
-                    <p className="m-0 mb-1.5 text-[17px] font-semibold">{x.title}</p>
-                    <p className="m-0 text-[15px] text-sub leading-relaxed">{x.body}</p>
+                  <div key={x.title} className="rounded-[12px] bg-ground px-5 py-4">
+                    <p className="m-0 mb-1 text-[15px] font-semibold">{x.title}</p>
+                    <p className="m-0 text-[13px] text-sub leading-relaxed">{x.body}</p>
                   </div>
                 ))}
               </div>
+            ) : null}
+          </Section>
+        )}
+
+        {c?.faqs.length ? (
+          <Section id="faq" title="よくある質問">
+            <div>
+              {c.faqs.map((f) => (
+                <details key={f.q} className="border-b border-hair">
+                  <summary className="flex justify-between items-center gap-4 py-4 text-[15px] font-semibold">
+                    <span>
+                      <span className="text-brand mr-2">Q</span>
+                      {f.q}
+                    </span>
+                    <ChevronDown size={18} className="chev text-mute shrink-0" aria-hidden="true" />
+                  </summary>
+                  <p className="m-0 pb-4 pl-6 text-sm leading-relaxed text-sub">{f.a}</p>
+                </details>
+              ))}
             </div>
-          ) : null}
-        </Band>
-      )}
+          </Section>
+        ) : null}
 
-      {c?.faqs.length ? (
-        <Band id="faq" labelledBy="faq-h">
-          <SectionTitle id="faq-h" eyebrow="よくある質問">
-            気になること。
-          </SectionTitle>
-          <div className="border-b border-line">
-            {c.faqs.map((f) => (
-              <details key={f.q} className="border-t border-line">
-                <summary className="flex justify-between items-center gap-4 py-5 text-[17px] sm:text-[19px] font-semibold">
-                  {f.q}
-                  <ChevronDown size={22} className="chev text-mute shrink-0" aria-hidden="true" />
-                </summary>
-                <p className="m-0 pb-6 max-w-[760px] text-[17px] leading-relaxed text-sub">{f.a}</p>
-              </details>
-            ))}
-          </div>
-        </Band>
-      ) : null}
-
-      <Band id="reviews" tone="gray" labelledBy="reviews-h">
-        <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
-          <div>
-            <p className="m-0 mb-2 text-[17px] font-semibold text-mute">口コミ</p>
-            <h2 id="reviews-h" className="m-0 text-[32px] sm:text-[48px] font-semibold leading-[1.1]">
-              使っている人の声。
-            </h2>
-          </div>
-          <RatingSummary slug={device.slug} large />
-        </div>
-        <div className="flex flex-col gap-6">
+        <Section id="reviews" title="口コミ" aside={<RatingSummary slug={device.slug} large />}>
           <Suspense fallback={<p className="m-0 text-sm text-mute">読み込み中…</p>}>
             <DeviceReviews slug={device.slug} />
           </Suspense>
           <ReviewForm slug={device.slug} deviceName={device.name} />
-        </div>
-      </Band>
+        </Section>
 
-      {related.length ? (
-        <Band labelledBy="related-h">
-          <SectionTitle id="related-h" eyebrow="比べてみる">
-            よく比較される製品。
-          </SectionTitle>
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
-            {related.map(({ r, rd, rs }) => (
-              <Link key={r.slug} href={`/pc/${r.slug}`} className="group text-ink hover:no-underline flex flex-col gap-4">
-                <div className="aspect-[16/10] rounded-[20px] bg-ground overflow-hidden transition-transform duration-300 group-hover:scale-[1.02]">
-                  <DeviceThumb device={rd} sizes="(max-width: 640px) 100vw, 340px" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <p className="m-0 text-[19px] font-semibold">{rd.name}</p>
-                  <p className="m-0 text-[15px] text-mute leading-snug">{r.diff}</p>
-                  <p className="m-0 mt-1 text-[15px]">
-                    月額 <b className="font-semibold tabular-nums">{rs.rentFrom ? yen(rs.rentFrom) : "—"}</b>〜
-                    <span className="text-link ml-2 group-hover:underline">詳しく見る ›</span>
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </Band>
-      ) : null}
-
-      {device.sources.length > 0 && (
-        <div className="mx-auto max-w-[1080px] px-4 sm:px-6 py-8">
-          <details className="text-xs text-faint">
+        {device.sources.length > 0 && (
+          <details className="text-xs text-faint -mt-6">
             <summary>仕様・価格の出典（{device.sources.length}）</summary>
             <ul className="m-0 mt-2 pl-4 list-disc flex flex-col gap-1">
               {device.sources.map((x) => (
@@ -389,8 +418,8 @@ export default async function DevicePage({ params }: PageProps<"/pc/[slug]">) {
               ))}
             </ul>
           </details>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

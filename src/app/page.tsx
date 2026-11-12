@@ -1,4 +1,5 @@
-import { CatalogBrowser, type FacetDef } from "@/components/CatalogBrowser";
+import { Suspense } from "react";
+import { CatalogBrowser, CatalogBrowserWithParams, type FacetDef } from "@/components/CatalogBrowser";
 import { summarize } from "@/lib/catalog";
 import { getCategories, getDevices } from "@/lib/catalog-server";
 import { getAllStats } from "@/lib/community";
@@ -14,8 +15,10 @@ export default async function Home() {
   const withProducts = categories.filter((c) => devices.some((d) => d.categoryId === c.id)).map(({ id, name, icon }) => ({ id, name, icon }));
 
   return (
-    <main className="mx-auto max-w-[1080px] px-4 sm:px-6 py-10">
-      <CatalogBrowser devices={summaries} stats={stats} facetDefs={facetDefs} categories={withProducts} />
+    <main className="mx-auto max-w-[1240px] px-4 sm:px-6 py-10">
+      <Suspense fallback={<CatalogBrowser devices={summaries} stats={stats} facetDefs={facetDefs} categories={withProducts} />}>
+        <CatalogBrowserWithParams devices={summaries} stats={stats} facetDefs={facetDefs} categories={withProducts} />
+      </Suspense>
     </main>
   );
 }
