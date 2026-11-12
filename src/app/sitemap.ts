@@ -7,6 +7,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/`, changeFrequency: "daily", priority: 1 },
     { url: `${SITE_URL}/guide/grades`, changeFrequency: "monthly", priority: 0.5 },
     { url: `${SITE_URL}/partners`, changeFrequency: "monthly", priority: 0.3 },
+    { url: `${SITE_URL}/privacy`, changeFrequency: "yearly", priority: 0.1 },
     ...allDevices().map((d) => ({
       url: `${SITE_URL}/pc/${d.slug}`,
       changeFrequency: "daily" as const,

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { GRADE_CODES, GRADES, RESALE_RATE, TEMPLATE_CODES, TEMPLATES, TERMS } from "@/data/master";
 import { yen } from "@/lib/format";
@@ -270,10 +271,24 @@ export function PriceSection({ device }: { device: Device }) {
               </div>
               <Row k="契約期間の総額（初期費用込み）" v={q ? yen(q.contractTotal) : "—"} muted />
             </dl>
-            {/* TODO: 申込フローとレンタル会社への送客 */}
-            <a href="#price" className="bg-brand text-white text-center no-underline py-3.5 rounded-[10px] font-bold">
-              この内容で問い合わせる
-            </a>
+            {chosen ? (
+              <Link
+                href={`/inquiry?${new URLSearchParams({
+                  device: device.slug,
+                  config: configId,
+                  grade,
+                  term: String(term),
+                  template: tpl,
+                  qty: String(qty),
+                  supplier: chosen.supplierId,
+                })}`}
+                className="bg-brand text-white text-center no-underline py-3.5 rounded-[10px] font-bold"
+              >
+                この内容で問い合わせる
+              </Link>
+            ) : (
+              <span className="bg-[#C9CED9] text-white text-center py-3.5 rounded-[10px] font-bold">この条件に対応する会社がありません</span>
+            )}
             <p className="m-0 text-[11px] text-mute">審査・契約・配送は選んだレンタル会社が行います。</p>
           </>
         ) : shops.length ? (

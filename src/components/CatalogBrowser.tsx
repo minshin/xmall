@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { DeviceSummary } from "@/lib/catalog";
+import type { DeviceStats } from "@/lib/types";
 import { yen } from "@/lib/format";
 import { DeviceIllustration } from "./DeviceIllustration";
 
@@ -19,7 +20,10 @@ const FACETS: { key: FacetKey; title: string; values: (d: DeviceSummary) => stri
   { key: "os", title: "OS", values: (d) => [d.os] },
 ];
 
-export function CatalogBrowser({ devices }: { devices: DeviceSummary[] }) {
+const NO_STATS: DeviceStats = { likes: 0, reviewCount: 0, rating: null };
+
+export function CatalogBrowser({ devices, stats }: { devices: DeviceSummary[]; stats: Record<string, DeviceStats> }) {
+  const st = (slug: string) => stats[slug] ?? NO_STATS;
   const [sel, setSel] = useState<Record<FacetKey, string[]>>({ brand: [], cpu: [], mem: [], size: [], os: [] });
   const [sort, setSort] = useState<Sort>("price");
 
@@ -36,9 +40,10 @@ export function CatalogBrowser({ devices }: { devices: DeviceSummary[] }) {
   const list = useMemo(() => {
     const hit = devices.filter((d) => FACETS.every((f) => !sel[f.key].length || f.values(d).some((v) => sel[f.key].includes(v))));
     return hit.sort((a, b) =>
-      sort === "price" ? (a.rentFrom ?? Infinity) - (b.rentFrom ?? Infinity) : sort === "popular" ? b.social.likes - a.social.likes : b.supplierCount - a.supplierCount,
+      sort === "price" ? (a.rentFrom ?? Infinity) - (b.rentFrom ?? Infinity) : sort === "popular" ? st(b.slug).likes - st(a.slug).likes : b.supplierCount - a.supplierCount,
     );
-  }, [devices, sel, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devices, sel, sort, stats]);
 
   const toggle = (k: FacetKey, v: string) =>
     setSel((s) => ({ ...s, [k]: s[k].includes(v) ? s[k].filter((x) => x !== v) : [...s[k], v] }));
@@ -118,11 +123,12 @@ export function CatalogBrowser({ devices }: { devices: DeviceSummary[] }) {
                     </Link>
                   </h2>
                   <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-sub">
-                    <span className="text-buy">♥ 気になる {d.social.likes.toLocaleString("ja-JP")}</span>
-                    <span>
-                      ★ {d.social.rating}（口コミ {d.social.reviewCount}件）
-                    </span>
-                    <span>「{d.social.topTag}」</span>
+                    {st(d.slug).likes > 0 && <span className="text-buy">♥ 気になる {st(d.slug).likes.toLocaleString("ja-JP")}</span>}
+                    {st(d.slug).reviewCount > 0 && (
+                      <span>
+                        ★ {st(d.slug).rating}（口コミ {st(d.slug).reviewCount}件）
+                      </span>
+                    )}
                     {!d.verified && <span className="rounded bg-[#FFF1DD] text-[#8A4B00] px-1.5">解説準備中</span>}
                   </div>
                 </div>

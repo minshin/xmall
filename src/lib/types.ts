@@ -89,7 +89,6 @@ export interface Device {
   verified: boolean;
   content?: DeviceContent;
   sources: Source[];
-  social: { likes: number; rating: number; reviewCount: number; topTag: string };
   bodyColor: string;
 }
 
@@ -118,18 +117,28 @@ export interface Shop {
   sample: boolean;
 }
 
+export type ReviewStatus = "pending" | "approved" | "rejected";
+
+/** 口コミ（DB: public.reviews） */
 export interface Review {
   id: string;
   deviceSlug: string;
-  rating: 1 | 2 | 3 | 4 | 5;
+  rating: number;
   author: string;
   use: Use;
   acquisition: "rent" | "buy";
-  via: string;
+  via: string | null;
   body: string;
   helpful: number;
-  replies: number;
+  createdAt: string;
   sample: boolean;
+}
+
+/** 機種ごとの集計（DB: public.device_stats） */
+export interface DeviceStats {
+  likes: number;
+  reviewCount: number;
+  rating: number | null;
 }
 
 export interface RentalOffer {

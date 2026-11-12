@@ -3,8 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DeviceIllustration } from "@/components/DeviceIllustration";
 import { PriceSection } from "@/components/PriceSection";
-import { LikeButton, ReviewList } from "@/components/Social";
-import { allDevices, getDevice, reviewsFor, summarize } from "@/lib/catalog";
+import { Suspense } from "react";
+import { DeviceLike, DeviceReviews, RatingSummary } from "@/components/Community";
+import { LikeButtonPlaceholder, ReviewForm } from "@/components/Social";
+import { allDevices, getDevice, summarize } from "@/lib/catalog";
 import { yen } from "@/lib/format";
 import { deviceJsonLd } from "@/lib/jsonld";
 
@@ -32,7 +34,6 @@ export default async function DevicePage({ params }: PageProps<"/pc/[slug]">) {
   if (!device) notFound();
   const s = summarize(device);
   const c = device.content;
-  const reviews = reviewsFor(device.slug);
 
   const toc = [
     ["price", "価格を比べる"],
@@ -71,10 +72,10 @@ export default async function DevicePage({ params }: PageProps<"/pc/[slug]">) {
             <span className="text-base font-medium text-sub">レンタル・購入の価格比較と、はじめての方向けの詳しい解説</span>
           </h1>
           <div className="flex flex-wrap gap-2.5 items-center text-[13px]">
-            <LikeButton base={device.social.likes} />
-            <a href="#reviews" className="no-underline">
-              ★ {device.social.rating}（口コミ {device.social.reviewCount}件）
-            </a>
+            <Suspense fallback={<LikeButtonPlaceholder likes={0} />}>
+              <DeviceLike slug={device.slug} />
+            </Suspense>
+            <RatingSummary slug={device.slug} />
           </div>
           <div className="grid grid-cols-2 gap-2.5 mt-1">
             <div className="bg-brand-soft rounded-xl px-3.5 py-3">
@@ -204,10 +205,13 @@ export default async function DevicePage({ params }: PageProps<"/pc/[slug]">) {
       <section id="reviews" aria-labelledby="reviews-h" className="card p-6 flex flex-col gap-4">
         <div className="flex flex-wrap justify-between gap-2 items-baseline">
           <h2 id="reviews-h" className="m-0 text-[19px] font-bold">利用者の口コミ</h2>
-          <span className="text-xs text-mute">評価を投稿できるのは、xmall経由でレンタル・購入した方だけです</span>
+          <span className="text-xs text-mute">投稿は運営が確認してから掲載します</span>
         </div>
-        <ReviewList reviews={reviews} />
-        <p className="m-0 text-[11px] text-mute">ショップやレンタル会社から依頼された投稿、特典と引き換えの投稿にはその旨を表示します。現在の口コミはサンプルです。</p>
+        <Suspense fallback={<p className="m-0 text-sm text-mute">口コミを読み込んでいます…</p>}>
+          <DeviceReviews slug={device.slug} />
+        </Suspense>
+        <ReviewForm slug={device.slug} deviceName={device.name} />
+        <p className="m-0 text-[11px] text-mute">ショップやレンタル会社から依頼された投稿、特典と引き換えの投稿にはその旨を表示します。</p>
       </section>
 
       {c?.related.length ? (

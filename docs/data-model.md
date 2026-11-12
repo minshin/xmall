@@ -27,3 +27,20 @@
 - 租的总额 = 最低月租（A 级、一般事务模板）× 月数
 
 以上系数都是样本假设，接入真实报价后删除。
+
+
+## 数据库（Supabase / Postgres）
+
+只存用户写入的数据。结构见 `supabase/migrations/`。
+
+| 表 | 内容 | 键 |
+|---|---|---|
+| `device_likes` | 点赞（気になる） | (device_slug, visitor_id) |
+| `reviews` | 口碑。`status`: pending → approved / rejected；`is_sample` 标样本 | id (uuid) |
+| `review_helpful` | 参考になった | (review_id, visitor_id) |
+| `inquiries` | 询价：报价条件快照（服务器重算的金额）+ 联系方式；`status`: new → forwarded → closed | id (uuid) |
+| `device_stats`（视图） | 每机型点赞数、已公开口碑数、平均分 | device_slug |
+
+- `device_slug` 对应 `src/data/devices.ts` 的 slug（目录不在 DB，所以没有外键）。
+- `visitor_id`：httpOnly Cookie `xm_vid` 里的随机 UUID，用于去重和限流，不做追踪。
+- 访问只从服务器（postgres 角色）进行；全部表开 RLS 且无 policy。

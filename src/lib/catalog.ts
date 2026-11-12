@@ -1,15 +1,8 @@
 import { DEVICES } from "../data/devices";
-import { REVIEWS } from "../data/reviews";
 import { lowestMonthly, lowestPurchase } from "./pricing";
 import type { Device, Os, Use } from "./types";
 
-export const USE_LABEL: Record<Use, string> = {
-  office: "一般事務",
-  design: "デザイン・映像",
-  dev: "開発",
-  sales: "営業・外回り",
-  cad: "CAD・3D",
-};
+export { USE_LABEL } from "./labels";
 
 export function allDevices(): Device[] {
   return DEVICES;
@@ -17,10 +10,6 @@ export function allDevices(): Device[] {
 
 export function getDevice(slug: string): Device | undefined {
   return DEVICES.find((d) => d.slug === slug);
-}
-
-export function reviewsFor(slug: string) {
-  return REVIEWS.filter((r) => r.deviceSlug === slug);
 }
 
 export interface DeviceSummary {
@@ -39,7 +28,6 @@ export interface DeviceSummary {
   buyFrom?: number;
   supplierCount: number;
   verified: boolean;
-  social: Device["social"];
   bodyColor: string;
   url: string;
 }
@@ -65,7 +53,6 @@ export function summarize(d: Device): DeviceSummary {
     buyFrom: lowestPurchase(d),
     supplierCount: d.suppliers.length,
     verified: d.verified,
-    social: d.social,
     bodyColor: d.bodyColor,
     url: `/pc/${d.slug}`,
   };

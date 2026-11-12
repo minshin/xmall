@@ -12,13 +12,30 @@
 
 ## 開発
 
+前提：Node.js 20.9+、Docker Desktop（ローカルの Supabase 用）、Supabase CLI（`brew install supabase/tap/supabase`）
+
 ```sh
 npm install
-npm run dev     # http://localhost:3000
+cp .env.example .env.local
+npm run db:start   # ローカル Supabase 起動。初回は migrations と seed（サンプル口コミ）を自動で流す
+npm run dev        # http://localhost:3000
+```
+
+- 管理画面：http://localhost:3000/admin（`.env.local` の ADMIN_USER / ADMIN_PASSWORD）
+- Supabase Studio：http://127.0.0.1:54323
+- DB を作り直す：`npm run db:reset`　止める：`npm run db:stop`
+- DB なし（DATABASE_URL 未設定）でも閲覧はできる（いいね・口コミ・問い合わせは保存されない）
+
+## テスト
+
+```sh
 npm test
-npm run build
+# DB のテストも実行する場合（DB 名は _test で終わること。毎回 public スキーマを作り直す）
+createdb -h 127.0.0.1 -p 54322 -U postgres xmall_test
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/xmall_test npm test
 ```
 
 ## 現状
 
-v0.1。レンタル会社・月額・公式以外のショップ価格・口コミはサンプルデータ。仕様・公式価格を出典で確認済みなのは MacBook Pro 14インチ（M5）のみ。
+v0.2。いいね・口コミ（審査制）・問い合わせ・管理画面が DB で動く。
+レンタル会社・月額・公式以外のショップ価格はサンプル。仕様・公式価格を出典で確認済みなのは MacBook Pro 14インチ（M5）のみ。
