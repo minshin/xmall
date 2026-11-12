@@ -170,7 +170,6 @@ export interface SeedDevice {
   content?: DeviceContent & { specs: SpecRow[] };
   sources: Source[];
   bodyColor: string;
-  images?: Omit<DeviceImage, "mediaId">[];
 }
 
 export interface Supplier {

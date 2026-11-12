@@ -20,7 +20,8 @@
 - 只有 `status = published` 的机型出现在公开页・API・MCP。
 - 页面上用的 `Device` 类型由 `toDevice()` 把上面几张表组装而成（specs 已展开规格项定义）。
 - 计算用的等级・模板・样本供应商・商店仍在 `src/data/master.ts`（`SUPPLIERS` 是虚构样本，签约后改为 DB）。
-- 初始数据：`src/data/devices.ts`（旧的笔记本专用形状 `SeedDevice`）→ `npm run catalog:seed`。
+- 初始数据：`src/data/devices.ts`（旧的笔记本专用形状 `SeedDevice`，不含图片）→ `npm run catalog:seed`。
+- 图片素材不进代码库：只在 Storage＋`media` 表。备份・迁移用 `npm run media:export / media:import`（manifest.json＋文件，按商品 slug・网站 id 重新关联）。
 
 ## 会员（Supabase Auth）
 

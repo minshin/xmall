@@ -15,9 +15,11 @@
     "db:status": "supabase status",
     "rentals:scrape": "tsx scripts/rentals/scrape.ts",
     "rentals:import": "tsx --env-file=.env.local scripts/rentals/import.ts",
-    "favicons": "tsx scripts/favicons.ts",
+    "favicons": "tsx --env-file=.env.local scripts/favicons.ts",
     "catalog:seed": "tsx --env-file=.env.local scripts/catalog-seed.ts",
-    "admin:grant": "tsx --env-file=.env.local scripts/admin-grant.ts"
+    "admin:grant": "tsx --env-file=.env.local scripts/admin-grant.ts",
+    "media:export": "tsx --env-file=.env.local scripts/media.ts export",
+    "media:import": "tsx --env-file=.env.local scripts/media.ts import"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -2,6 +2,7 @@ import type { SeedDevice } from "../lib/types";
 
 /**
  * 機種の初期データ（v0.4 から本番のカタログは DB。ここは `npm run catalog:seed` で DB に入れる元データ兼テスト用の固定データ）。
+ * 画像は含めない（画像・favicon は Storage と media テーブルにだけ置く。管理画面で登録、環境間の移動は media:export / media:import）。
  * 以後の編集は管理画面 /admin/products で行う（このファイルを直しても DB には反映されない）。
  * verified: true の機種は仕様・公式価格を出典で確認済み。レンタル基準額（rentBase）はサンプル。
  */
@@ -26,12 +27,6 @@ export const DEVICES: SeedDevice[] = [
     suppliers: ["bayside", "techlease", "greenpc", "secondlab", "northit"],
     verified: true,
     bodyColor: "#3B3D42",
-    images: [
-      { src: "/images/devices/macbook-pro-14-m5/1.jpg", width: 1960, height: 1102, alt: "MacBook Pro 14インチ（M5）", credit: "Apple Newsroom（© Apple Inc.）" },
-      { src: "/images/devices/macbook-pro-14-m5/2.jpg", width: 1960, height: 1102, alt: "MacBook Pro 14インチ（M5）正面", credit: "Apple Newsroom（© Apple Inc.）" },
-      { src: "/images/devices/macbook-pro-14-m5/3.jpg", width: 1960, height: 1306, alt: "MacBook Pro 14インチでAsanaとKeynoteを使用", credit: "Apple Newsroom（© Apple Inc.）" },
-      { src: "/images/devices/macbook-pro-14-m5/4.jpg", width: 1960, height: 1306, alt: "MacBook Pro 14インチでAdobe Premiere Proを使用", credit: "Apple Newsroom（© Apple Inc.）" },
-    ],
     sources: [
       { title: "Apple MacBook Pro 仕様", url: "https://www.apple.com/jp/macbook-pro/specs/", accessed: "2026-11-12" },
       { title: "価格.comマガジン：アップル、M5チップを搭載した「MacBook Pro」を本日10/22発売", url: "https://news.kakaku.com/prdnews/cd=pc/ctcd=0029/id=152334/", accessed: "2026-11-12" },
@@ -109,12 +104,6 @@ export const DEVICES: SeedDevice[] = [
     suppliers: ["bayside", "techlease", "greenpc"],
     verified: false,
     bodyColor: "#D9D3C7",
-    images: [
-      { src: "/images/devices/macbook-air-13/1.jpg", width: 1960, height: 1102, alt: "MacBook Air 13インチ（M4）", credit: "Apple Newsroom（© Apple Inc.）" },
-      { src: "/images/devices/macbook-air-13/2.jpg", width: 1960, height: 1306, alt: "MacBook Air のカラーラインナップ", credit: "Apple Newsroom（© Apple Inc.）" },
-      { src: "/images/devices/macbook-air-13/3.jpg", width: 1960, height: 1102, alt: "MacBook Air を仕事で使う様子", credit: "Apple Newsroom（© Apple Inc.）" },
-      { src: "/images/devices/macbook-air-13/4.jpg", width: 1960, height: 1306, alt: "MacBook Air の Liquid Retina ディスプレイ", credit: "Apple Newsroom（© Apple Inc.）" },
-    ],
     sources: [],
   },
   {
@@ -135,11 +124,6 @@ export const DEVICES: SeedDevice[] = [
     suppliers: ["techlease", "northit", "greenpc", "bayside"],
     verified: false,
     bodyColor: "#2A2C31",
-    images: [
-      { src: "/images/devices/thinkpad-x1-carbon/1.jpg", width: 1200, height: 800, alt: "ThinkPad X1 Carbon Gen 13", credit: "Lenovo（レノボ・ジャパン 特集記事）" },
-      { src: "/images/devices/thinkpad-x1-carbon/2.jpg", width: 1200, height: 800, alt: "ThinkPad X1 Carbon Gen 13 天板", credit: "Lenovo（レノボ・ジャパン 特集記事）" },
-      { src: "/images/devices/thinkpad-x1-carbon/3.jpg", width: 1200, height: 800, alt: "ThinkPad X1 Carbon Gen 13 Aura Edition 刻印", credit: "Lenovo（レノボ・ジャパン 特集記事）" },
-    ],
     sources: [],
   },
   {

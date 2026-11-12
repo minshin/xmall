@@ -1,15 +1,17 @@
 /**
- * 購入先・レンタル会社・メーカーのサイトアイコン（favicon）を取得して supabase/seed-assets/favicons/ に保存する。
- * `npm run catalog:seed` で Storage に上がり、sites.favicon_id に紐づく（以後は管理画面 /admin/sites で差し替えられる）。
+ * 購入先・メーカー・レンタル会社のサイトアイコン（favicon）を取得し、Storage（バケット media）に置いて
+ * sites.favicon_id に紐づける。ファイルはリポジトリに置かない。
  *
- *   npm run favicons
+ *   npm run favicons              sites にある全サイト（favicon 未設定のものだけ）
+ *   npm run favicons -- --force   設定済みも取り直す
  *
  * 高解像度を優先：apple-touch-icon → rel="icon"（sizes の大きい順）→ /favicon.ico。
- * 実行時に外部サービス（Google の favicon API など）を使わないよう、ファイルは自前で配信する。
+ * 取れないサイト（ボット対策で弾かれるなど）は管理画面 /admin/sites から手で登録する。
  */
-import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import postgres from "postgres";
+import { uploadMedia } from "../src/lib/storage";
 
+/** sites.url が無い・トップページ以外を見たいときの取得先 */
 const SITES: Record<string, string> = {
   // 購入先
   amazon: "https://www.amazon.co.jp/",
@@ -30,7 +32,6 @@ const SITES: Record<string, string> = {
 };
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36";
-const OUT_DIR = resolve(import.meta.dirname, "../supabase/seed-assets/favicons");
 
 const EXT: Record<string, string> = {
   "image/png": "png",
@@ -56,18 +57,16 @@ function candidates(html: string, base: string): string[] {
   return [...out.map((c) => c.href), new URL("/favicon.ico", base).toString()];
 }
 
-async function fetchIcon(id: string, site: string): Promise<string | null> {
+async function fetchIcon(site: string): Promise<{ data: Uint8Array; mime: string } | null> {
   const page = await fetch(site, { headers: { "user-agent": UA, "accept-language": "ja" } });
   const html = page.ok ? await page.text() : "";
   for (const url of candidates(html, page.url || site)) {
     try {
       const r = await fetch(url, { headers: { "user-agent": UA } });
       const type = (r.headers.get("content-type") ?? "").split(";")[0].trim();
-      const buf = Buffer.from(await r.arrayBuffer());
+      const buf = new Uint8Array(await r.arrayBuffer());
       if (!r.ok || buf.length < 100 || !EXT[type]) continue;
-      const file = `${id}.${EXT[type]}`;
-      writeFileSync(resolve(OUT_DIR, file), buf);
-      return file;
+      return { data: buf, mime: type === "image/vnd.microsoft.icon" ? "image/x-icon" : type };
     } catch {
       /* 次の候補へ */
     }
@@ -76,19 +75,32 @@ async function fetchIcon(id: string, site: string): Promise<string | null> {
 }
 
 async function main() {
-  mkdirSync(OUT_DIR, { recursive: true });
-  const map: Record<string, string> = {};
-  for (const [id, site] of Object.entries(SITES)) {
-    try {
-      const path = await fetchIcon(id, site);
-      if (path) map[id] = path;
-      console.log(`${id}: ${path ?? "見つからず"}`);
-    } catch (e) {
-      console.log(`${id}: 失敗 ${e instanceof Error ? e.message : e}`);
+  const force = process.argv.includes("--force");
+  const sql = postgres(process.env.DATABASE_URL!, { max: 1, prepare: false, onnotice: () => {} });
+  try {
+    const sites = await sql<{ id: string; name: string; url: string | null; favicon_id: string | null }[]>`
+      select id, name, url, favicon_id from public.sites order by kind, sort`;
+    for (const s of sites) {
+      if (s.favicon_id && !force) continue;
+      const from = SITES[s.id] ?? s.url;
+      if (!from) continue;
+      try {
+        const icon = await fetchIcon(from);
+        if (!icon) {
+          console.log(`${s.id}: 見つからず（管理画面から登録してください）`);
+          continue;
+        }
+        const m = await uploadMedia(sql, { data: icon.data, mime: icon.mime, path: `favicon/${s.id}.${EXT[icon.mime] ?? "png"}`, kind: "favicon", alt: s.name });
+        await sql`update public.sites set favicon_id = ${m.id}, updated_at = now() where id = ${s.id}`;
+        console.log(`${s.id}: ${m.path}`);
+      } catch (e) {
+        console.log(`${s.id}: 失敗 ${e instanceof Error ? e.message : e}`);
+      }
+      await new Promise((r) => setTimeout(r, 1000));
     }
-    await new Promise((r) => setTimeout(r, 1000));
+  } finally {
+    await sql.end();
   }
-  console.log(`保存先: ${OUT_DIR}（${Object.keys(map).length} 件）`);
 }
 
 main().catch((e) => {

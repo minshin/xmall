@@ -110,7 +110,7 @@ export function seedToDevice(d: SeedDevice): Device {
     content: d.content ? content : undefined,
     sources: d.sources,
     bodyColor: d.bodyColor,
-    images: d.images ?? [],
+    images: [],
   };
 }
 
